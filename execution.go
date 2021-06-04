@@ -29,6 +29,7 @@ import (
 	"github.com/ystia/yorc/v4/deployments"
 	"github.com/ystia/yorc/v4/events"
 	"github.com/ystia/yorc/v4/locations"
+	"github.com/ystia/yorc/v4/log"
 	"github.com/ystia/yorc/v4/prov"
 )
 
@@ -90,7 +91,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 
 	// Defining a long monitoring internal for very long jobs, that will override
 	// the monitoring time interval
-	longMonitoringTimeInterval := time.Minute
+	longMonitoringTimeInterval := time.Minute * 5
 	if longMonitoringTimeInterval < monitoringTimeInterval {
 		longMonitoringTimeInterval = monitoringTimeInterval
 	}
@@ -211,6 +212,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 	}
 
 	if !valid {
+		log.Printf("DDI plugin requests to refresh token for deployment %s\n", deploymentID)
 		accessToken, _, err = aaiClient.RefreshToken(ctx)
 		if err != nil {
 			return exec, errors.Wrapf(err, "Failed to refresh token for orchestrator")

@@ -63,20 +63,13 @@ func (c *httpclient) newRequest(method, path string, body io.Reader) (*http.Requ
 
 func (c *httpclient) doRequest(method, path string, expectedStatuses []int, token string, payload, result interface{}) error {
 
-	var reqBody io.Reader
+	var jsonParam []byte
+	var err error
 	if payload != nil {
-		jsonParam, err := json.Marshal(payload)
+		jsonParam, err = json.Marshal(payload)
 		if err != nil {
 			return err
 		}
-		reqBody = bytes.NewBuffer(jsonParam)
-	}
-
-	log.Debugf("Sending request %s to %s", method, c.baseURL+path)
-
-	request, err := c.newRequest(method, path, reqBody)
-	if err != nil {
-		return err
 	}
 
 	tokenRefreshed := (token == "")
@@ -85,6 +78,19 @@ func (c *httpclient) doRequest(method, path string, expectedStatuses []int, toke
 	var response *http.Response
 
 	for !done {
+		var reqBody io.Reader
+		if len(jsonParam) != 0 {
+			reqBody = bytes.NewBuffer(jsonParam)
+		}
+
+		log.Debugf("Sending request %s to %s", method, c.baseURL+path)
+
+		var request *http.Request
+		request, err = c.newRequest(method, path, reqBody)
+		if err != nil {
+			return err
+		}
+
 		if newToken != "" {
 			request.Header.Add("Authorization", fmt.Sprintf("Bearer %s", newToken))
 		}
@@ -106,9 +112,15 @@ func (c *httpclient) doRequest(method, path string, expectedStatuses []int, toke
 			}
 		}
 		if !foundExpectedStatus {
-			err = errors.Errorf("Expected HTTP Status code in %v, got %d, reason %q",
-				expectedStatuses, response.StatusCode, response.Status)
-			if strings.Contains(response.Status, invalidTokenError) && !tokenRefreshed {
+			body, _ := ioutil.ReadAll(response.Body)
+			err = errors.Errorf("Expected HTTP Status code in %v, got %d, reason %q, body %q",
+				expectedStatuses, response.StatusCode, response.Status, string(body))
+			responseStatusLowerCase := strings.ToLower(response.Status)
+			if (strings.Contains(responseStatusLowerCase, invalidTokenErrorLowerCase) ||
+				strings.Contains(responseStatusLowerCase, inactiveTokenErrorLowerCase) ||
+				response.StatusCode == http.StatusUnauthorized) && !tokenRefreshed {
+				log.Printf("Refreshing token and retrying request %s %s on error %d %q %q\n",
+					path, string(jsonParam), response.StatusCode, response.Status, body)
 				newToken, err = c.refreshTokenFunc()
 				tokenRefreshed = true
 				done = (err != nil)

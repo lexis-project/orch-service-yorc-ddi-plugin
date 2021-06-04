@@ -56,7 +56,8 @@ const (
 	ReplicationStatusDatasetNotReplicated = "Dataset is not replicated"
 	ReplicationStatusNoSuchDataset        = "Dataset doesn't exist or you don't have permission to access it"
 
-	invalidTokenError = "Invalid Token"
+	invalidTokenErrorLowerCase  = "invalid token"
+	inactiveTokenErrorLowerCase = "inactive token"
 
 	enableCloudAccessREST           = "/cloud/add"
 	disableCloudAccessREST          = "/cloud/remove"
@@ -390,7 +391,7 @@ func (d *ddiClient) SubmitHPCToDDIDataTransfer(metadata Metadata, token, sourceS
 	}
 
 	requestStr, _ := json.Marshal(request)
-	log.Debugf("Submitting DDI data trasbfer request %s", string(requestStr))
+	log.Debugf("Submitting DDI data trasnfer request %s", string(requestStr))
 
 	var response SubmittedRequestInfo
 	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
@@ -581,10 +582,26 @@ func (d *ddiClient) CreateEmptyDatasetInProject(token, project string, metadata 
 		Project:    project,
 		Metadata:   metadata,
 	}
-	err := d.httpDatasetClient.doRequest(http.MethodPost, "",
-		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
-	if err != nil {
-		err = errors.Wrapf(err, "Failed to search dataset with request %v", request)
+
+	var err error
+	done := false
+	// Retrying several times as this call regularly returns an error 500 Internal Server Error
+	for i := 1; i < 5 && !done; i++ {
+		err = d.httpDatasetClient.doRequest(http.MethodPost, "",
+			[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
+		done = (err == nil)
+		if err != nil {
+			err = errors.Wrapf(err, "Failed to create dataset with request %v", request)
+			errorMsg := strings.ToLower(err.Error())
+			if strings.Contains(errorMsg, "502 bad gateway") || strings.Contains(errorMsg, "504 gateway time-out") {
+				log.Printf("Attempt %d of request to create dataset from %s for request %v failed on error %s\n",
+					i, d.httpStagingClient.baseURL, request, err.Error())
+			} else {
+				break
+			}
+			time.Sleep(5 * time.Second)
+		}
+
 	}
 
 	return response.InternalID, err

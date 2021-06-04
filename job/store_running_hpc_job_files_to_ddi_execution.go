@@ -17,6 +17,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -198,6 +199,9 @@ func (e *StoreRunningHPCJobFilesToDDI) Execute(ctx context.Context) error {
 		}
 
 		datasetPath := path.Join(ddiPath, internalID)
+
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).RegisterAsString(
+			fmt.Sprintf("Created empty dataset %s with metadata %v", datasetPath, metadata))
 
 		err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
 			destinationDatasetPathConsulAttribute, datasetPath)

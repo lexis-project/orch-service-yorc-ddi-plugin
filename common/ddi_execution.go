@@ -593,6 +593,7 @@ func GetAAIClient(deploymentID string, locationProps config.DynamicMap) yorcoidc
 // RefreshToken refreshes an access token
 func RefreshToken(ctx context.Context, locationProps config.DynamicMap, deploymentID string) (string, string, error) {
 
+	log.Printf("DDI requests to refresh token for deployment %s\n", deploymentID)
 	aaiClient := GetAAIClient(deploymentID, locationProps)
 	// Getting an AAI client to check token validity
 	accessToken, newRefreshToken, err := aaiClient.RefreshToken(ctx)

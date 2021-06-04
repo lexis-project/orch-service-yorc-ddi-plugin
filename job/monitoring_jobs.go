@@ -100,7 +100,7 @@ type StoredFileInfo struct {
 	Status           string
 	ErrorMessage     string
 	GroupIdentifier  string
-	NumberOfAttempts int
+	NumberOfAttempts int `json:"NumberOfAttempts,string"`
 }
 
 // ToBeStoredFileInfo holds properties of a file to be stored in DDI
@@ -115,7 +115,7 @@ type ReplicationInfo struct {
 	RequestID        string
 	Status           string
 	ErrorMessage     string
-	NumberOfAttempts int
+	NumberOfAttempts int `json:"NumberOfAttempts,string"`
 }
 
 // DatasetReplicationInfo holds replication info of a dataset over several locations
@@ -1205,9 +1205,12 @@ func (o *ActionOperator) setDestinationDatasetPath(ctx context.Context, ddiClien
 
 	// Add replication info to dataset replication for new completed groups
 	resultPath = path.Join(getDDIProjectPath(hpcJobMonitoringInfo.projectName), internalID)
-	var replications map[string]ReplicationInfo
+
+	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcJobMonitoringInfo.deploymentID).RegisterAsString(
+		fmt.Sprintf("Created empty dataset %s with metadata %v", resultPath, metadata))
+
+	replications := make(map[string]ReplicationInfo)
 	if len(hpcJobMonitoringInfo.replicationSites) > 0 {
-		replications = make(map[string]ReplicationInfo)
 		for _, replicationSite := range hpcJobMonitoringInfo.replicationSites {
 			replicationLocation := replicationSite + "_iRODS"
 			replications[replicationLocation] = ReplicationInfo{}
