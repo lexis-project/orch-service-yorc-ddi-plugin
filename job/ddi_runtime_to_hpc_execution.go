@@ -215,11 +215,20 @@ func (e *DDIRuntimeToHPCExecution) submitDataTransferRequest(ctx context.Context
 		uncompress = "yes"
 	}
 
+	ddiAreaNames, err := e.getAreasForDDIDataset(ctx, ddiClient, sourcePath, ddiClient.GetDDIAreaName())
+	if err != nil {
+		return err
+	}
+
+	if len(ddiAreaNames) == 0 {
+		return errors.Errorf("Found no DDI area having dataset path %s", sourcePath)
+	}
+
 	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
 		"Submitting data transfer request for %s source %s path %s, destination %s path %s, decrypt %s, uncompress %s, URL %s, job %d, task %d",
-		e.NodeName, ddiClient.GetDDIAreaName(), sourcePath, targetSystem, taskDirPath, decrypt, uncompress, heappeURL, heappeJobID, taskID)
+		e.NodeName, ddiAreaNames[0], sourcePath, targetSystem, taskDirPath, decrypt, uncompress, heappeURL, heappeJobID, taskID)
 
-	requestID, err := ddiClient.SubmitDDIToHPCDataTransfer(metadata, token, sourcePath, targetSystem, taskDirPath,
+	requestID, err := ddiClient.SubmitDDIToHPCDataTransfer(metadata, token, ddiAreaNames[0], sourcePath, targetSystem, taskDirPath,
 		decrypt, uncompress, heappeURL, heappeJobID, taskID)
 	if err != nil {
 		return err

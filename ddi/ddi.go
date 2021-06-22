@@ -97,8 +97,8 @@ type Client interface {
 	SubmitCloudToDDIDataTransfer(metadata Metadata, token, cloudStagingAreaSourcePath, ddiDestinationPath, encryption, compression string) (string, error)
 	SubmitDDIDatasetInfoRequest(token, targetSystem, ddiPath string) (string, error)
 	SubmitDDIDataDeletion(token, path string) (string, error)
-	SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error)
-	SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
+	SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error)
+	SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
 	SubmitHPCToDDIDataTransfer(metadata Metadata, token, sourceSystem, hpcDirectoryPath, ddiPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
 	SubmitDDIReplicationRequest(token, sourceSystem, sourcePath, targetSystem string) (string, error)
 	GetCloudStagingAreaProperties() LocationCloudStagingArea
@@ -235,11 +235,11 @@ func (d *ddiClient) GetDisableCloudAccessRequestStatus(token, requestID string) 
 }
 
 // SubmitDDIToCloudDataTransfer submits a data transfer request from DDI to Cloud
-func (d *ddiClient) SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error) {
+func (d *ddiClient) SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error) {
 
 	request := DataTransferRequest{
 		Metadata:     metadata,
-		SourceSystem: d.ddiArea,
+		SourceSystem: ddiSourceSystem,
 		SourcePath:   ddiSourcePath,
 		TargetSystem: d.cloudStagingArea.Name,
 		TargetPath:   cloudStagingAreaDestinationPath,
@@ -338,12 +338,12 @@ func (d *ddiClient) SubmitCloudStagingAreaDataDeletion(token, path string) (stri
 }
 
 // SubmitDDIToHPCDataTransfer submits a data transfer request from DDI to HPC
-func (d *ddiClient) SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error) {
+func (d *ddiClient) SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error) {
 
 	request := HPCDataTransferRequest{
 		DataTransferRequest{
 			Metadata:     metadata,
-			SourceSystem: d.ddiArea,
+			SourceSystem: ddiSourceSystem,
 			SourcePath:   ddiSourcePath,
 			TargetSystem: targetSystem,
 			TargetPath:   hpcDirectoryPath,

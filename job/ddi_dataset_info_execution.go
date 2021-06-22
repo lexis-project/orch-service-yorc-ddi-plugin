@@ -19,12 +19,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/lexis-project/yorc-ddi-plugin/ddi"
 	"github.com/pkg/errors"
 
 	"github.com/ystia/yorc/v4/deployments"
 	"github.com/ystia/yorc/v4/events"
-	"github.com/ystia/yorc/v4/log"
 	"github.com/ystia/yorc/v4/tosca"
 )
 
@@ -90,7 +88,7 @@ func (e *DDIDatasetInfoExecution) submitDatasetInfoRequest(ctx context.Context) 
 	}
 
 	// Get locations where this dataset is available
-	ddiAreaNames, err := e.getAreasForDDIDataset(ctx, ddiClient, datasetPath)
+	ddiAreaNames, err := e.getAreasForDDIDataset(ctx, ddiClient, datasetPath, "")
 	if err != nil {
 		return err
 	}
@@ -127,43 +125,4 @@ func (e *DDIDatasetInfoExecution) submitDatasetInfoRequest(ctx context.Context) 
 	}
 
 	return err
-}
-
-func (e *DDIDatasetInfoExecution) getAreasForDDIDataset(ctx context.Context, ddiClient ddi.Client, datasetPath string) ([]string, error) {
-	var ddiAreas []string
-
-	// First get the DDI locations
-	ddiAreaNames, err := e.getDDIAreaNames(ctx)
-	if err != nil {
-		return ddiAreas, err
-	}
-	// Get the access token
-	token, err := e.AAIClient.GetAccessToken()
-	if err != nil {
-		return ddiAreas, err
-	}
-
-	// Then check which one has a dataset or a replica
-	for _, ddiAreaName := range ddiAreaNames {
-		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
-			"Getting replication status for %q source %q path %q",
-			e.NodeName, ddiAreaName, datasetPath)
-		status, err := ddiClient.GetReplicationStatus(token, ddiAreaName, datasetPath)
-		if err != nil {
-			return ddiAreas, err
-		}
-		switch status {
-		case ddi.ReplicationStatusParentDataset,
-			ddi.ReplicationStatusReplicaDataset,
-			ddi.ReplicationStatusDatasetNotReplicated:
-			ddiAreas = append(ddiAreas, ddiAreaName)
-		case ddi.ReplicationStatusNoSuchDataset:
-			log.Debugf("Dataset %s not in %s", datasetPath, ddiAreaName)
-		default:
-			log.Printf("[WARN] unexpected replication status for %s %s: %s", ddiAreaName, datasetPath, status)
-		}
-	}
-
-	return ddiAreas, err
-
 }

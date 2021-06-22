@@ -131,11 +131,20 @@ func (e *DDIToCloudExecution) submitDataTransferRequest(ctx context.Context) err
 		return err
 	}
 
+	ddiAreaNames, err := e.getAreasForDDIDataset(ctx, ddiClient, sourcePath, ddiClient.GetDDIAreaName())
+	if err != nil {
+		return err
+	}
+
+	if len(ddiAreaNames) == 0 {
+		return errors.Errorf("Found no DDI area having dataset path %s", sourcePath)
+	}
+
 	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
 		"Submitting data transfer request for %s source %s path %s, destination %s path %s, decrypt %s, uncompress %s",
-		e.NodeName, ddiClient.GetDDIAreaName(), sourcePath, ddiClient.GetCloudStagingAreaName(), destPath, decrypt, uncompress)
+		e.NodeName, ddiAreaNames[0], sourcePath, ddiClient.GetCloudStagingAreaName(), destPath, decrypt, uncompress)
 
-	requestID, err := ddiClient.SubmitDDIToCloudDataTransfer(metadata, token, sourcePath, destPath, decrypt, uncompress)
+	requestID, err := ddiClient.SubmitDDIToCloudDataTransfer(metadata, token, ddiAreaNames[0], sourcePath, destPath, decrypt, uncompress)
 	if err != nil {
 		return err
 	}
