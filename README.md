@@ -19,6 +19,11 @@ Job executing a transfer of dataset from DDI to HPC in a directory for a given
 task in the job
 ### org.lexis.common.ddi.nodes.HPCToDDIJob
 Job executing a transfer of data from a HPC job directory to DDI
+### org.lexis.common.ddi.nodes.CloudToHPCJob
+Job executing a transfer of dataset from Cloud staging area to HPC in a directory for a given
+task in the job
+### org.lexis.common.ddi.nodes.HPCToCloudIJob
+Job executing a transfer of dataset from a HPC job directory to Cloud Staging area
 ### org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob
 Job monitoring a HEApPE job and transferring new files produced by this HEAppE job
 to DDI, until this HEAppE job ends

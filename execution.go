@@ -47,6 +47,8 @@ const (
 	ddiRuntimeToCloudJobType                = "org.lexis.common.ddi.nodes.DDIRuntimeToCloudJob"
 	ddiRuntimeToHPCTaskJobType              = "org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob"
 	cloudToDDIJobType                       = "org.lexis.common.ddi.nodes.CloudToDDIJob"
+	cloudToHPCJobType                       = "org.lexis.common.ddi.nodes.CloudToHPCJob"
+	hpcToCloudJobType                       = "org.lexis.common.ddi.nodes.HPCToCloudJob"
 	waitForDDIDatasetJobType                = "org.lexis.common.ddi.nodes.WaitForDDIDatasetJob"
 	storeRunningHPCJobType                  = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob"
 	storeRunningHPCJobGroupByDatasetType    = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIGroupByDatasetJob"
@@ -320,6 +322,54 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 	}
 	if isCloudToDDIJob {
 		exec = &job.CloudToDDIJobExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.DataTransferAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+
+		return exec, exec.ResolveExecution(ctx)
+	}
+
+	isCloudToHPCJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, cloudToHPCJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isCloudToHPCJob {
+		exec = &job.CloudToHPCJobExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.DataTransferAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+
+		return exec, exec.ResolveExecution(ctx)
+	}
+
+	isHPCToCloudJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, hpcToCloudJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isHPCToCloudJob {
+		exec = &job.HPCToCloudJobExecution{
 			DDIJobExecution: &job.DDIJobExecution{
 				DDIExecution: &common.DDIExecution{
 					KV:           kv,

@@ -95,11 +95,13 @@ type Client interface {
 	GetEnableCloudAccessRequestStatus(token, requestID string) (string, error)
 	SubmitCloudStagingAreaDataDeletion(token, path string) (string, error)
 	SubmitCloudToDDIDataTransfer(metadata Metadata, token, cloudStagingAreaSourcePath, ddiDestinationPath, encryption, compression string) (string, error)
+	SubmiCloudToHPCDataTransfer(metadata Metadata, token, cloudStagingAreaSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
 	SubmitDDIDatasetInfoRequest(token, targetSystem, ddiPath string) (string, error)
 	SubmitDDIDataDeletion(token, path string) (string, error)
 	SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error)
 	SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
 	SubmitHPCToDDIDataTransfer(metadata Metadata, token, sourceSystem, hpcDirectoryPath, ddiPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
+	SubmitHPCToCloudDataTransfer(metadata Metadata, token, sourceSystem, hpcDirectoryPath, cloudStagingAreaDestinationPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error)
 	SubmitDDIReplicationRequest(token, sourceSystem, sourcePath, targetSystem string) (string, error)
 	GetCloudStagingAreaProperties() LocationCloudStagingArea
 	GetDDIDatasetInfoRequestStatus(token, requestID string) (string, string, string, string, error)
@@ -254,7 +256,7 @@ func (d *ddiClient) SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSo
 	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
 		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
 	if err != nil {
-		err = errors.Wrapf(err, "Failed to submit DDI %s to Cloud %s data transfer", ddiSourcePath, cloudStagingAreaDestinationPath)
+		err = errors.Wrapf(err, "Failed to submit DDI %s to Cloud %s %s data transfer", ddiSourcePath, d.cloudStagingArea.Name, cloudStagingAreaDestinationPath)
 	}
 
 	return response.RequestID, err
@@ -301,6 +303,36 @@ func (d *ddiClient) SubmitCloudToDDIDataTransfer(metadata Metadata, token, cloud
 	}
 
 	return response.RequestID, err
+}
+
+// SubmitCloudToHPCDataTransfer submits a data transfer request from Cloud to HPC
+func (d *ddiClient) SubmiCloudToHPCDataTransfer(metadata Metadata, token, cloudStagingAreaSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error) {
+	request := HPCDataTransferRequest{
+		DataTransferRequest{
+			Metadata:     metadata,
+			SourceSystem: d.cloudStagingArea.Name,
+			SourcePath:   cloudStagingAreaSourcePath,
+			TargetSystem: targetSystem,
+			TargetPath:   hpcDirectoryPath,
+			Encryption:   encryption,
+			Compression:  compression,
+		},
+		DataTransferRequestHPCExtension{
+			HEAppEURL: heappeURL,
+			JobID:     jobID,
+			TaskID:    taskID,
+		},
+	}
+
+	var response SubmittedRequestInfo
+	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
+		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
+	if err != nil {
+		err = errors.Wrapf(err, "Failed to submit Cloud %s to HPC %s %s %s data transfer", cloudStagingAreaSourcePath, heappeURL, targetSystem, hpcDirectoryPath)
+	}
+
+	return response.RequestID, err
+
 }
 
 // SubmitDDIDataDeletion submits a DDI data deletion request
@@ -398,6 +430,38 @@ func (d *ddiClient) SubmitHPCToDDIDataTransfer(metadata Metadata, token, sourceS
 		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to submit HPC %s %s %s to DDI %s data transfer", heappeURL, sourceSystem, hpcDirectoryPath, ddiPath)
+	}
+
+	return response.RequestID, err
+}
+
+// SubmitHPCToCloudDataTransfer submits a data transfer request from HPC to Cloud staging area
+func (d *ddiClient) SubmitHPCToCloudDataTransfer(metadata Metadata, token, sourceSystem, hpcDirectoryPath, cloudStagingAreaDestinationPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error) {
+	request := HPCDataTransferRequest{
+		DataTransferRequest{
+			Metadata:     metadata,
+			SourceSystem: sourceSystem,
+			SourcePath:   hpcDirectoryPath,
+			TargetSystem: d.cloudStagingArea.Name,
+			TargetPath:   cloudStagingAreaDestinationPath,
+			Encryption:   encryption,
+			Compression:  compression,
+		},
+		DataTransferRequestHPCExtension{
+			HEAppEURL: heappeURL,
+			JobID:     jobID,
+			TaskID:    taskID,
+		},
+	}
+
+	requestStr, _ := json.Marshal(request)
+	log.Debugf("Submitting DDI data transfer request %s", string(requestStr))
+
+	var response SubmittedRequestInfo
+	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
+		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
+	if err != nil {
+		err = errors.Wrapf(err, "Failed to submit HPC %s %s %s to cloud %s %s data transfer", heappeURL, sourceSystem, hpcDirectoryPath, d.cloudStagingArea.Name, cloudStagingAreaDestinationPath)
 	}
 
 	return response.RequestID, err
@@ -509,8 +573,9 @@ func (d *ddiClient) GetReplicationStatus(token, targetSystem, targetPath string)
 			[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
 		done = (err == nil)
 		if err != nil {
-			err = errors.Wrapf(err, "Failed to submit replication status request for system %s path %s", targetSystem, targetPath)
-			if strings.Contains(err.Error(), "500 Internal Server Error") {
+			err = errors.Wrapf(err, "Failed to submit replication status request from %s for target %s path %s", d.httpStagingClient.baseURL, targetSystem, targetPath)
+			if strings.Contains(err.Error(), "500 Internal Server Error") ||
+				strings.Contains(err.Error(), "502 Bad Gateway") {
 				log.Printf("Attempt %d of submit replication status request to %s%s for %q %q failed on error 500 Internal server error\n",
 					i, d.httpStagingClient.baseURL, ddiStagingReplicationStatusREST, targetSystem, targetPath)
 			} else {

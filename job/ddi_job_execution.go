@@ -216,8 +216,8 @@ func (e *DDIJobExecution) getAreasForDDIDataset(ctx context.Context, ddiClient d
 		status, errClient := ddiClient.GetReplicationStatus(token, ddiAreaName, sourcePath)
 		if errClient != nil {
 			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelWARN, e.DeploymentID).Registerf(
-				"Failed to get replication status for %q source %q path %q",
-				e.NodeName, ddiAreaName, sourcePath)
+				"Failed to get replication status for %q source %q path %q: %v",
+				e.NodeName, ddiAreaName, sourcePath, errClient)
 			continue
 		}
 		switch status {
@@ -232,6 +232,9 @@ func (e *DDIJobExecution) getAreasForDDIDataset(ctx context.Context, ddiClient d
 
 		case ddi.ReplicationStatusNoSuchDataset:
 			log.Debugf("Dataset %s not in %s", sourcePath, ddiAreaName)
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
+				"Node %s dataset %s not in %s",
+				e.NodeName, sourcePath, ddiAreaName)
 		default:
 			log.Printf("[WARN] unexpected replication status for %s %s: %s", ddiAreaName, sourcePath, status)
 		}

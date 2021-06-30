@@ -2,7 +2,7 @@ tosca_definitions_version: yorc_tosca_simple_yaml_1_0
 
 metadata:
   template_name: org.lexis.common.ddi-types
-  template_version: 1.0.0
+  template_version: 1.0.1
   template_author: yorc
 
 description: DDI types - Distributed Data Infrastructure
@@ -513,6 +513,10 @@ node_types:
         description: Name of the task for which to store results. If not set, all tasks results are saved.
         type: string
         required: false
+      source_subdirectory:
+        description: Subdirectoy to copy (appended to the task path)
+        type: string
+        required: false
       encrypt:
         description: Should the dataset be encrypted
         type: boolean
@@ -544,7 +548,7 @@ node_types:
       - job:
           capability: org.lexis.common.heappe.capabilities.HeappeJob
           node: org.lexis.common.heappe.nodes.Job
-          relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+          relationship: org.lexis.common.ddi.relationships.SendJobOutputs
           occurrences: [1, 1]
     interfaces:
       Standard:
@@ -567,6 +571,7 @@ node_types:
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
             TASK_NAME: {get_property: [SELF, task_name]}
+            SOURCE_SUBDIRECTORY:  { get_property: [SELF, source_subdirectory] }
             DDI_PATH: { get_property: [SELF, ddi_path] }
             ENCRYPT: { get_property: [SELF, encrypt] }
             COMPRESS: { get_property: [SELF, compress] }
@@ -576,6 +581,162 @@ node_types:
         run:
           inputs:
             JOB_CHANGED_FILES: {get_attribute: [REQ_TARGET, job, changed_files]}
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+  org.lexis.common.ddi.nodes.CloudToHPCJob:
+    derived_from: org.lexis.common.ddi.nodes.pub.Cloud
+    description: >
+      Transfer data from Cloud staging area to a HPC job
+    properties:
+      token:
+        description: OpenID Connect token
+        type: string
+        required: true
+      task_name:
+        description: Name of the task in the Job
+        type: string
+        required: true
+      source_subdirectory:
+        description: Subdirectoy to copy (appended to the path provided by the cloud area provider path provided in requirements)
+        type: string
+        required: false
+      source_file_name:
+        description: "Name of the file to copy (if not set, directory contents will be copied)"
+        type: string
+        required: false
+    attributes:
+      request_id:
+        type: string
+        description: >
+          ID of the DDI request created
+      destination_path:
+        type: string
+        description: Path to the dataset transferred in HPC
+    capabilities:
+      data_transfer:
+        type: org.lexis.common.ddi.capabilities.DataTransferDDI
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+      - job:
+          capability: org.lexis.common.heappe.capabilities.HeappeJob
+          node: org.lexis.common.heappe.nodes.Job
+          relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+        delete:
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+      tosca.interfaces.node.lifecycle.Runnable:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+        submit:
+          inputs:
+            SOURCE_SUBDIRECTORY:  { get_property: [SELF, source_subdirectory] }
+            SOURCE_FILE_NAME:  { get_property: [SELF, source_file_name] }
+            TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASK_NAME: {get_property: [SELF, task_name]}
+            CLOUD_STAGING_AREA_DIRECTORY_PATH: { get_attribute: [REQ_TARGET, cloud_area_directory_provider, staging_area_directory_path] }
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+        run:
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+  org.lexis.common.ddi.nodes.HPCToCloudJob:
+    derived_from: tosca.nodes.Root
+    description: >
+      Transfer data from an HPC job to a cloud staging area
+    properties:
+      token:
+        description: OpenID Connect token
+        type: string
+        required: true
+      task_name:
+        description: Name of the task for which to store results. If not set, all tasks results are saved.
+        type: string
+        required: false
+      source_subdirectory:
+        description: Subdirectoy to copy (appended to the task path)
+        type: string
+        required: false
+      cloud_staging_area_directory_path:
+        type: string
+        description: >
+          Relative directory path in cloud staging area where to copy the dataset.
+        required: false
+        default: ""
+      timestamp_cloud_staging_area_directory:
+        type: boolean
+        description: Add a tiemstamp to cloud_staging_area_directory_path
+        default: false
+        required: false
+    attributes:
+      request_id:
+        type: string
+        description: >
+          ID of the DDI request created
+      destination_path:
+        type: string
+        description: Path to the data transferred in Cloud staging area
+      staging_area_name:
+        type: string
+        description: Name of the cloud staging area
+      staging_area_directory_path:
+        type: string
+        description: Path of the dataset directory in Cloud staging area
+    capabilities:
+      data_transfer:
+        type: org.lexis.common.ddi.capabilities.DataTransferCloud
+    requirements:
+      - os:
+          capability: tosca.capabilities.OperatingSystem
+          node: tosca.nodes.Compute
+          relationship: org.lexis.common.ddi.relationships.SameSite
+          occurrences: [1, 1]
+      - job:
+          capability: org.lexis.common.heappe.capabilities.HeappeJob
+          node: org.lexis.common.heappe.nodes.Job
+          relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+        delete:
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+      tosca.interfaces.node.lifecycle.Runnable:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+        submit:
+          inputs:
+            HPC_DIRECTORY_PATH: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            HPC_SERVER: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
+            HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
+            HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
+            TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASK_NAME: {get_property: [SELF, task_name]}
+            SOURCE_SUBDIRECTORY:  { get_property: [SELF, source_subdirectory] }
+            CLOUD_STAGING_AREA_DIRECTORY_PATH: { get_property: [SELF, cloud_staging_area_directory_path] }
+            TIMESTAMP_CLOUD_STAGING_AREA_DIRECTORY: { get_property: [SELF, timestamp_cloud_staging_area_directory] }
+          implementation:
+            file: "embedded"
+            type: org.lexis.common.ddi.artifacts.Deployment
+        run:
           implementation:
             file: "embedded"
             type: org.lexis.common.ddi.artifacts.Deployment
@@ -644,7 +805,7 @@ node_types:
       - job:
           capability: org.lexis.common.heappe.capabilities.HeappeJob
           node: org.lexis.common.heappe.nodes.Job
-          relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+          relationship: org.lexis.common.ddi.relationships.SendJobOutputs
           occurrences: [1, 1]
     interfaces:
       Standard:
@@ -1330,7 +1491,7 @@ relationship_types:
     description: >
       Relationship with a provider of details on a dataset and its files in DDI
     valid_target_types: [ org.lexis.common.ddi.capabilities.DatasetFilesProvider ]
-  org.lexis.common.ddi.relationships.SendJobOutputsToDDI:
+  org.lexis.common.ddi.relationships.SendJobOutputs:
     derived_from: tosca.relationships.DependsOn
     description: Relationship with HEAppE job for which to store results in DDI
     valid_target_types: [ org.lexis.common.heappe.capabilities.HeappeJob ]
