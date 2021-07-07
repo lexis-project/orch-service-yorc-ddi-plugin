@@ -193,7 +193,32 @@ func (e *HPCToCloudJobExecution) submitDataTransferRequest(ctx context.Context) 
 	err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
 		requestIDConsulAttribute, requestID)
 	if err != nil {
-		err = errors.Wrapf(err, "Request %s submitted, but failed to store this request id", requestID)
+		return errors.Wrapf(err, "Request %s submitted, but failed to store this request id", requestID)
+	}
+	// Store the staging area name
+	stagingAreaName := ddiClient.GetCloudStagingAreaName()
+	err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
+		stagingAreaNameConsulAttribute, stagingAreaName)
+	if err != nil {
+		return errors.Wrapf(err, "Request %s submitted, but failed to store the staging area name %s", requestID, stagingAreaName)
+	}
+	err = deployments.SetCapabilityAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
+		dataTransferCapability, stagingAreaNameConsulAttribute, stagingAreaName)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to store staging area name capability attribute value %s", stagingAreaName)
+	}
+
+	// Store the staging area directory path
+	err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
+		stagingAreaPathConsulAttribute, destPath)
+	if err != nil {
+		return errors.Wrapf(err, "Request %s submitted, but failed to store the staging area directory path %s", requestID, destPath)
+	}
+	err = deployments.SetCapabilityAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
+		dataTransferCapability, stagingAreaPathConsulAttribute, destPath)
+	if err != nil {
+		err = errors.Wrapf(err, "Failed to store cloud staging area path capability attribute value %s", destPath)
 	}
 	return err
+
 }
