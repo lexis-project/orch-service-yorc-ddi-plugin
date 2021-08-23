@@ -37,7 +37,7 @@ a given pattern to appear in this dataset
 ### org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob
 Job executing a transfer of files in dataset from DDI to Cloud staging area, the dataset
 being provided at runtime by an associated component
-### org.lexis.common.ddi.nodes.DDIRuntimeFIlesToHPCTaskJob
+### org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob
 Job executing a transfer of files in a dataset from DDI to HPC in a directory for a given
 task in the job
 ### org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob

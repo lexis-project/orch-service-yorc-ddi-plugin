@@ -506,7 +506,7 @@ node_types:
           implementation:
             file: ddi-types-a4c.yaml
             type: yorc.artifacts.Deployment.SlurmJob
-  org.lexis.common.ddi.nodes.DDIRuntimeFIlesToHPCTaskJob:
+  org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob:
     derived_from: org.lexis.common.ddi.nodes.pub.DDIToHPCTransfer
     description: >
       Transfer a dataset from DDI to HPC staging area for a given task in the job

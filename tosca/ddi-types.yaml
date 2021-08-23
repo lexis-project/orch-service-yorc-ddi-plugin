@@ -1038,7 +1038,7 @@ node_types:
           implementation:
             file: "embedded"
             type: org.lexis.common.ddi.artifacts.Deployment
-  org.lexis.common.ddi.nodes.DDIRuntimeFIlesToHPCTaskJob:
+  org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob:
     derived_from: tosca.nodes.Root
     description: >
       Transfer from DDI to HPC staging area, a dataset (or one dataset file) selected at runtime
