@@ -767,6 +767,11 @@ node_types:
         type: boolean
         default: false
         required: false
+      keep_directory_tree:
+        description: Store files keeping their directory tree (default, copy files to the root of the dataset)
+        type: boolean
+        default: false
+        required: false
       last_modification_elapsed_time_minutes:
         description: Elapsed time in minutes since last modification after which a file can be stored in DDI
         type: integer
@@ -832,6 +837,7 @@ node_types:
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
             JOB_CHANGED_FILES: {get_attribute: [REQ_TARGET, job, changed_files]}
+            JOB_NODE_NAME: {get_attribute: [REQ_TARGET, job, tosca_name]}
             JOB_START_DATE: {get_attribute: [REQ_TARGET, job, start_date]}
             JOB_STATE: {get_attribute: [REQ_TARGET, job, state]}
             ENCRYPT: { get_property: [SELF, encrypt] }
@@ -954,7 +960,7 @@ node_types:
           implementation:
             file: "embedded"
             type: org.lexis.common.ddi.artifacts.Deployment
-  org.lexis.common.ddi.nodes.DDIRuntimeToCloudJob:
+  org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob:
     derived_from: org.lexis.common.ddi.nodes.pub.Cloud
     description: >
       Transfer from DDI to Cloud staging area, a dataset (or one dataset file) selected at runtime
@@ -1032,7 +1038,7 @@ node_types:
           implementation:
             file: "embedded"
             type: org.lexis.common.ddi.artifacts.Deployment
-  org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob:
+  org.lexis.common.ddi.nodes.DDIRuntimeFIlesToHPCTaskJob:
     derived_from: tosca.nodes.Root
     description: >
       Transfer from DDI to HPC staging area, a dataset (or one dataset file) selected at runtime
@@ -1159,6 +1165,38 @@ node_types:
           implementation:
             file: "embedded"
             type: org.lexis.common.ddi.artifacts.Deployment
+  org.lexis.common.ddi.nodes.GetRuntimeDDIDatasetInfoJob:
+    derived_from: org.lexis.common.ddi.nodes.pub.GetDatasetInfo
+    description: >
+      Get DDI dataset info for a dataset path provided at runtime
+    properties:
+      token:
+        description: OpenID Connect token
+        type: string
+        required: true
+    attributes:
+      request_id:
+        type: string
+    requirements:
+      - dataset:
+          capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+          node: tosca.nodes.Root
+          relationship: tosca.relationships.DependsOn
+          occurrences: [1, 1]
+    interfaces:
+      tosca.interfaces.node.lifecycle.Runnable:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+        submit:
+          inputs:
+            DDI_DATASET_PATH: {get_attribute: [REQ_TARGET, data_transfer, destination_path]}
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+        run:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
   org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo:
     derived_from: org.lexis.common.ddi.nodes.pub.GetDatasetInfo
     description: >
