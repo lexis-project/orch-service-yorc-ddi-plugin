@@ -27,12 +27,14 @@ import (
 
 	"github.com/lexis-project/yorc-ddi-plugin/common"
 	"github.com/lexis-project/yorc-ddi-plugin/ddi"
+	"github.com/lexis-project/yorc-heappe-plugin/heappe"
 
 	"github.com/pkg/errors"
 
 	"github.com/ystia/yorc/v4/config"
 	"github.com/ystia/yorc/v4/deployments"
 	"github.com/ystia/yorc/v4/events"
+	"github.com/ystia/yorc/v4/locations"
 	"github.com/ystia/yorc/v4/log"
 	"github.com/ystia/yorc/v4/prov"
 	"github.com/ystia/yorc/v4/prov/operations"
@@ -69,17 +71,20 @@ const (
 	actionDataMetadata          = "metadata"
 	actionDataFilesPatterns     = "files_patterns"
 	actionDataElapsedTime       = "elapsed_time"
+	actionDataKeepDirTree       = "keep_dir_tree"
 	actionDataTaskName          = "task_name"
 	actionDataOperation         = "operation"
 	actionDataGroupFilesPattern = "group_files_pattern"
 	actionDataReplicationSites  = "replication_sites"
 	actionDataEncrypt           = "encrypt"
 	actionDataCompress          = "compress"
+	actionDataUser              = "user"
 
 	datasetElementDirectoryType = "directory"
 	datasetElementFileType      = "file"
 
 	projectPathPattern = "project/proj%x"
+	allFilesGroupID    = "__allfiles__"
 )
 
 // ActionOperator holds function allowing to execute an action
@@ -556,15 +561,6 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	}
 
 	groupFilesPattern := action.Data[actionDataGroupFilesPattern]
-	var replicationSites []string
-	if action.Data[actionDataReplicationSites] != "" {
-		err = json.Unmarshal([]byte(action.Data[actionDataReplicationSites]), &replicationSites)
-		if err != nil {
-			return true, errors.Wrapf(err, "Failed to parse action data %s property for operation %v : %s",
-				actionDataReplicationSites, opStore, action.Data[actionDataReplicationSites])
-		}
-	}
-
 	// Get encryption/compression settings
 	encrypt, ok := action.Data[actionDataEncrypt]
 	if !ok {
@@ -577,17 +573,16 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 
 	// Get the list of already created dataset for each group and their replication status
 	var datasetReplication map[string]DatasetReplicationInfo
-	if groupFilesPattern != "" {
-		val, err := deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", datasetReplicationConsulAttribute)
-		if err == nil && val != nil && val.RawString() != "" {
-			err = json.Unmarshal([]byte(val.RawString()), &datasetReplication)
-			if err != nil {
-				err = errors.Wrapf(err, "Failed to parse map of dataset paths %s", val.RawString())
-				return true, err
-			}
+	val, err := deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", datasetReplicationConsulAttribute)
+	if err == nil && val != nil && val.RawString() != "" {
+		err = json.Unmarshal([]byte(val.RawString()), &datasetReplication)
+		if err != nil {
+			err = errors.Wrapf(err, "Failed to parse map of dataset paths %s", val.RawString())
+			return true, err
 		}
 	}
 
+	log.Debugf("Dataset replication %v\n", datasetReplication)
 	ddiProjectName := action.Data[actionDataDDIProjectName]
 
 	metadataStr, ok := action.Data[actionDataMetadata]
@@ -599,6 +594,8 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	if err != nil {
 		return true, errors.Wrapf(err, "Wrong format for metadata %s for actionType %s", metadataStr, action.ActionType)
 	}
+
+	keepDirTree, _ := strconv.ParseBool(action.Data[actionDataKeepDirTree])
 
 	// Refresh input values
 	envInputs, _, err := operations.ResolveInputsWithInstances(
@@ -617,15 +614,35 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	default:
 		jobDone = false
 	}
-	log.Debugf("job status %s\n", jobState)
+	log.Debugf("Monitored job status: %s jobDone %v\n", jobState, jobDone)
 	ddiClient, err := getDDIClient(ctx, cfg, deploymentID, actionData.nodeName)
 	if err != nil {
+		log.Printf("Failed to get DDI client, error %s\n", err.Error())
 		return true, err
+	}
+
+	var specifiedSites []string
+	if action.Data[actionDataReplicationSites] != "" {
+		err = json.Unmarshal([]byte(action.Data[actionDataReplicationSites]), &specifiedSites)
+		if err != nil {
+			return true, errors.Wrapf(err, "Failed to parse action data %s property for operation %v : %s",
+				actionDataReplicationSites, opStore, action.Data[actionDataReplicationSites])
+		}
+	}
+
+	// Removing the current site from the list of site where to do the replication
+	// as the current site contains the parent dataset
+	currentArea := ddiClient.GetDDIAreaName()
+	var replicationSites []string
+	for _, site := range specifiedSites {
+		if !strings.HasPrefix(currentArea, site+"_") {
+			replicationSites = append(replicationSites, site)
+		}
 	}
 
 	// Get the dataset path
 	var datasetPath string
-	val, err := deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", destinationDatasetPathConsulAttribute)
+	val, err = deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", destinationDatasetPathConsulAttribute)
 	if err == nil && val != nil && val.RawString() != "" {
 		datasetPath = val.RawString()
 	}
@@ -675,12 +692,12 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	if taskName != "" {
 		taskIDStr = tasksNameID[taskName]
 		for _, fPattern := range filesPatternsProperty {
-			newPattern := fmt.Sprintf("%s///%s", taskIDStr, fPattern)
+			newPattern := fmt.Sprintf("%s/%s", taskIDStr, fPattern)
 			filesPatterns = append(filesPatterns, newPattern)
 		}
 		if len(filesPatterns) == 0 {
 			// Define at list a pattern to match the task files
-			newPattern := fmt.Sprintf("%s///.*", taskIDStr)
+			newPattern := fmt.Sprintf("%s/.*", taskIDStr)
 			filesPatterns = append(filesPatterns, newPattern)
 		}
 	} else {
@@ -704,8 +721,8 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 
 	startDateStr := o.getValueFromEnv(jobStartDateEnvVar, envInputs)
 	if startDateStr == "" {
-		log.Debugf("Nothing to store yet for %s %s, related HEAppE job not yet started", deploymentID, actionData.nodeName)
-		return deregister, err
+		log.Debugf("Nothing to store yet for %s %s, related HEAppE job not yet started, jobDone %v\n", deploymentID, actionData.nodeName, jobDone)
+		return jobDone, err
 	}
 
 	layout := "2006-01-02T15:04:05"
@@ -716,28 +733,63 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	}
 	// The job has started
 	// Getting the list of files and keeping only those created/updated after the start date
-	changedFilesStr := o.getValueFromEnv(jobChangedFilesEnvVar, envInputs)
+	/*
+			changedFilesStr := o.getValueFromEnv(jobChangedFilesEnvVar, envInputs)
 
-	if changedFilesStr == "" {
-		log.Debugf("Nothing to store yet for %s %s, related HEAppE job has not yet created/updated files", deploymentID, actionData.nodeName)
-		return deregister, err
+			if changedFilesStr == "" {
+				log.Debugf("Nothing to store yet for %s %s, related HEAppE job has not yet created/updated files\n", deploymentID, actionData.nodeName)
+				log.Printf("Nothing to store yet for %s %s, related HEAppE job has not yet created/updated files jobDone %v\n", deploymentID, actionData.nodeName, jobDone)
+				return jobDone, err
 
+			}
+
+		var changedFiles []ChangedFile
+		err = json.Unmarshal([]byte(changedFilesStr), &changedFiles)
+		if err != nil {
+			return true, errors.Wrapf(err, "Wrong format for changed files %s for actionType %s", changedFilesStr, action.ActionType)
+		}
+	*/
+	jobNodeName := o.getValueFromEnv(jobNodeNameEnvVar, envInputs)
+	if jobNodeName == "" {
+		return true, errors.Errorf("Failed to get TOSCA node name of associated job")
 	}
-	var changedFiles []ChangedFile
-	err = json.Unmarshal([]byte(changedFilesStr), &changedFiles)
+	token, err := common.GetAccessToken(ctx, cfg, deploymentID, actionData.nodeName)
 	if err != nil {
-		return true, errors.Wrapf(err, "Wrong format for changed files %s for actionType %s", changedFilesStr, action.ActionType)
+		return true, err
+	}
+	heappeClient, err := getHEAppEClient(ctx, cfg, deploymentID, jobNodeName, token, action.Data[actionDataUser])
+	if err != nil {
+		return true, err
+	}
+
+	heappeJobIDStr := o.getValueFromEnv(heappeJobIDEnvVar, envInputs)
+	if heappeJobIDStr == "" {
+		return true, errors.Errorf("Failed to get ID of associated job")
+	}
+	heappeJobID, err := strconv.ParseInt(heappeJobIDStr, 10, 64)
+	if err != nil {
+		err = errors.Wrapf(err, "Unexpected Job ID value %q for deployment %s node %s",
+			heappeJobIDStr, deploymentID, actionData.nodeName)
+		return true, err
+	}
+	changedFiles, err := heappeClient.ListChangedFilesForJob(heappeJobID)
+	if err != nil {
+		err = errors.Wrapf(err, "Node %s failed to get list of files for Job ID %s",
+			actionData.nodeName, heappeJobIDStr)
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, deploymentID).RegisterAsString(err.Error())
+		// Not a fatal error, will retry next time
+		return false, err
 	}
 
 	// Keeping only the files since job start not already stored, removing any input file added before
 	// and removing files not matching the filters if any is defined
 	var newFilesUpdates []ChangedFile
-	layout = "2006-01-02T15:04:00Z"
+	layout = "2006-01-02T15:04:05Z"
 	for _, changedFile := range changedFiles {
 		changedTime, err := time.Parse(layout, changedFile.LastModifiedDate)
 		if err != nil {
-			log.Debugf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s",
-				deploymentID, actionData.nodeName, changedFile.LastModifiedDate, layout)
+			log.Printf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s : %s\n",
+				deploymentID, actionData.nodeName, changedFile.LastModifiedDate, layout, err.Error())
 			continue
 		}
 
@@ -757,15 +809,18 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 				return true, errors.Wrapf(err, "Failed to check if file %s matches filters %v", changedFile.FileName, filesPatterns)
 			}
 			if matches {
-				changedFile.GroupIdentifier = o.getGroupIdentifier(changedFile.FileName, groupFilesPattern)
-				newFilesUpdates = append(newFilesUpdates, changedFile)
+				fileUpdate := ChangedFile{
+					FileName:         changedFile.FileName,
+					LastModifiedDate: changedFile.LastModifiedDate,
+					GroupIdentifier:  o.getGroupIdentifier(changedFile.FileName, groupFilesPattern),
+				}
+				newFilesUpdates = append(newFilesUpdates, fileUpdate)
 			} else {
 				log.Debugf("ignoring file %s not matching patterns %+v\n", changedFile.FileName, filesPatterns)
 			}
 		}
 	}
 
-	log.Debugf("new files updates: %+v\n", newFilesUpdates)
 	log.Debugf("new files updates: %+v\n", newFilesUpdates)
 
 	// Update the maps of files to be stored
@@ -790,7 +845,7 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 				log.Debugf("duration %s expecting %s\ncurrent time %s insert time %s\n",
 					duration.String(), elapsedDuration.String(), currentTime.String(), insertTime.String())
 				if duration >= elapsedDuration {
-					log.Printf("New file to store: %s\n", changedFile.FileName)
+					log.Debugf("New file to store: %s\n", changedFile.FileName)
 					toStore[changedFile.FileName] = changedFile
 				} else {
 					toBeStoredUpdated[changedFile.FileName] = toBeStoredFile
@@ -807,13 +862,12 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	}
 
 	log.Debugf("Files to be stored updated: %+v\n", toBeStoredUpdated)
-	log.Debugf("Files to be stored updated: %+v\n", toBeStoredUpdated)
 
 	// Save the new to be stored values
 	err = deployments.SetAttributeComplexForAllInstances(ctx, deploymentID, actionData.nodeName,
 		toBeStoredFilesConsulAttribute, toBeStoredUpdated)
 	if err != nil {
-		return deregister, errors.Wrapf(err, "Failed to store %s %s %s value %+v",
+		return false, errors.Wrapf(err, "Failed to store %s %s %s value %+v",
 			deploymentID, actionData.nodeName, toBeStoredFilesConsulAttribute, toBeStoredUpdated)
 	}
 
@@ -829,27 +883,13 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	}
 	res := strings.SplitN(serverFQDN, ".", 2)
 	sourceSystem := res[0] + "_home"
-	heappeJobIDStr := o.getValueFromEnv(heappeJobIDEnvVar, envInputs)
-	if heappeJobIDStr == "" {
-		return true, errors.Errorf("Failed to get ID of associated job")
-	}
-	heappeJobID, err := strconv.ParseInt(heappeJobIDStr, 10, 64)
-	if err != nil {
-		err = errors.Wrapf(err, "Unexpected Job ID value %q for deployment %s node %s",
-			heappeJobIDStr, deploymentID, actionData.nodeName)
-		return true, err
-	}
 
 	heappeURL := o.getValueFromEnv(heappeURLEnvVar, envInputs)
 	if heappeURL == "" {
 		return true, errors.Errorf("Failed to get HEAppE URL of job %d", heappeJobID)
 	}
 
-	token, err := common.GetAccessToken(ctx, cfg, deploymentID, actionData.nodeName)
-	if err != nil {
-		return true, err
-	}
-
+	submitFailure := false
 	for name, fileDetails := range toStore {
 		hpcJobMonitoringInfo := hpcJobMonitoringInfo{
 			deploymentID:     deploymentID,
@@ -861,15 +901,24 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 			replicationSites: replicationSites,
 		}
 
-		destPath, err := o.setDestinationDatasetPath(ctx, ddiClient, hpcJobMonitoringInfo, datasetReplication, token)
+		datasetPath, err := o.setDestinationDatasetPath(ctx, ddiClient, hpcJobMonitoringInfo, datasetReplication, token)
 		if err != nil {
 			return true, err
 		}
 		sourcePath := path.Join(jobDirPath, name)
+		destPath := getDestinationDirectoryPath(name, taskIDStr, datasetPath, keepDirTree)
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).Registerf(
+			"Submitting data transfer request for %s source %s path %s, destination %s path %s, encrypt %s, compress %s, URL %s, job %d, task %d",
+			actionData.nodeName, sourceSystem, sourcePath, ddiClient.GetDDIAreaName(), destPath, encrypt, compress, heappeURL, heappeJobID, taskID)
 		requestID, err := ddiClient.SubmitHPCToDDIDataTransfer(metadata, token, sourceSystem,
 			sourcePath, destPath, encrypt, compress, heappeURL, heappeJobID, taskID)
 		if err != nil {
-			return true, errors.Wrapf(err, "Failed to submit data transfer of %s to DDI", sourcePath)
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).RegisterAsString(
+				fmt.Sprintf("Failed to submit request to store %s, will retry next time, error %s", sourcePath, err.Error()))
+			// TODO: remove this line
+			// return true, errors.Wrapf(err, "Failed to submit data transfer of %s to DDI", sourcePath)
+			submitFailure = true
+			continue
 		}
 
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).RegisterAsString(
@@ -904,7 +953,6 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	}
 
 	log.Debugf("Files stored updated: %+v\n", storedFiles)
-	log.Debugf("Files stored updated: %+v\n", storedFiles)
 
 	// Replicate completed datasets
 	replicating, replicationDone, err := o.updateReplicationStatus(
@@ -913,7 +961,7 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 		return true, err
 	}
 
-	if len(replicationDone) > 0 {
+	if len(replicationDone) > 0 && groupFilesPattern != "" {
 		err = deployments.SetAttributeForAllInstances(ctx, deploymentID, actionData.nodeName,
 			destinationDatasetPathConsulAttribute, datasetReplication[replicationDone[len(replicationDone)-1]].DatasetPath)
 		if err != nil {
@@ -921,16 +969,35 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 		}
 	}
 
-	if jobDone && (len(remainingRequests) > 0 || len(replicating) > 0) {
+	if jobDone && (len(remainingRequests) > 0 || len(replicating) > 0 || submitFailure) {
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).RegisterAsString(
-			fmt.Sprintf("Job %s done, but still %d transfer requests and %d replications to end",
-				actionData.nodeName, len(remainingRequests), len(replicating)))
+			fmt.Sprintf("Job %s done, but still %d transfer requests and %d replications to end, submit failure to retry: %t",
+				actionData.nodeName, len(remainingRequests), len(replicating), submitFailure))
 	}
 
-	deregister = jobDone && len(remainingRequests) == 0 && len(replicating) == 0
+	deregister = jobDone && len(remainingRequests) == 0 && len(replicating) == 0 && !submitFailure
 	return deregister, err
 }
 
+func getDestinationDirectoryPath(sourceFilePath, taskID, datasetPath string, keepDirTree bool) string {
+
+	if !keepDirTree {
+		return datasetPath
+	}
+
+	// Remove the task ID in prefix
+	var prefix string
+	if taskID != "" {
+		if len(sourceFilePath) > 0 && sourceFilePath[0] == '/' {
+			prefix = "/" + taskID
+		} else {
+			prefix = taskID
+		}
+	}
+	relativePath := strings.TrimPrefix(sourceFilePath, prefix)
+	relativeDirPath := path.Dir(relativePath)
+	return path.Join(datasetPath, relativeDirPath)
+}
 func (o *ActionOperator) updateReplicationStatus(ctx context.Context, ddiClient ddi.Client,
 	completedGroupsIDs []string, datasetReplication map[string]DatasetReplicationInfo,
 	hpcTransferInfo hpcTransferContextInfo) ([]string, []string, error) {
@@ -953,8 +1020,14 @@ func (o *ActionOperator) updateReplicationStatus(ctx context.Context, ddiClient 
 				replicationsToSubmit = append(replicationsToSubmit, groupID)
 				continue
 			}
+
+			if replicationInfo.Status == requestStatusCompleted {
+				// alreay done
+				replicationDone = append(replicationDone, groupID)
+				continue
+			}
 			var requestStatus, errorMessage string
-			ddiStatus, _, err := ddiClient.GetDataTransferRequestStatus(hpcTransferInfo.token, replicationInfo.RequestID)
+			ddiStatus, _, _, err := ddiClient.GetReplicationsRequestStatus(hpcTransferInfo.token, replicationInfo.RequestID)
 			if err != nil {
 				log.Printf("Failed to get status of DDI replication request %s : %s", replicationInfo.RequestID, err.Error())
 				requestStatus = requestStatusFailed
@@ -999,6 +1072,8 @@ func (o *ActionOperator) updateReplicationStatus(ctx context.Context, ddiClient 
 				break
 			}
 
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcTransferInfo.deploymentID).Registerf(
+				"Submitting replication from %s to %s of dataset %s", ddiClient.GetDDIAreaName(), location, datasetReplication[groupID].DatasetPath)
 			replicationInfo.RequestID, err = ddiClient.SubmitDDIReplicationRequest(hpcTransferInfo.token, ddiClient.GetDDIAreaName(),
 				datasetReplication[groupID].DatasetPath, location)
 			if err != nil {
@@ -1010,10 +1085,14 @@ func (o *ActionOperator) updateReplicationStatus(ctx context.Context, ddiClient 
 				replicationInfo.Status = requestStatusFailed
 				replicationInfo.NumberOfAttempts = replicationInfo.NumberOfAttempts + 1
 			} else {
+				events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcTransferInfo.deploymentID).Registerf(
+					"Submitted replication from %s to %s of dataset %s request id %s", ddiClient.GetDDIAreaName(),
+					location, datasetReplication[groupID].DatasetPath, replicationInfo.RequestID)
 				replicationInfo.ErrorMessage = ""
 				replicationInfo.Status = requestStatusPending
-				replicationInfo.NumberOfAttempts = 0
 			}
+
+			datasetReplication[groupID].Replication[location] = replicationInfo
 
 		}
 	}
@@ -1119,6 +1198,7 @@ func (o *ActionOperator) updateRequestsStatus(ctx context.Context, ddiClient ddi
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelWARN, hpcTransferInfo.deploymentID).RegisterAsString(
 			fmt.Sprintf("Retrying submitted DDI request to store %s, request %s which failed at attempt %d with error %s",
 				name, failedRequest.RequestID, failedRequest.NumberOfAttempts, failedRequest.ErrorMessage))
+
 		sourcePath := path.Join(hpcTransferInfo.jobDirPath, name)
 		var datasetPath string
 		if failedRequest.GroupIdentifier == "" {
@@ -1126,6 +1206,9 @@ func (o *ActionOperator) updateRequestsStatus(ctx context.Context, ddiClient ddi
 		} else {
 			datasetPath = datasetReplication[failedRequest.GroupIdentifier].DatasetPath
 		}
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcTransferInfo.deploymentID).Registerf(
+			"Submitting data transfer request source %s path %s, destination %s path %s, encrypt %s, compress %s, URL %s, job %d, task %d",
+			hpcTransferInfo.sourceSystem, sourcePath, ddiClient.GetDDIAreaName(), datasetPath, encrypt, compress, hpcTransferInfo.heappeURL, hpcTransferInfo.jobID, hpcTransferInfo.taskID)
 		requestID, submitErr := ddiClient.SubmitHPCToDDIDataTransfer(hpcTransferInfo.metadata, hpcTransferInfo.token, hpcTransferInfo.sourceSystem,
 			sourcePath, datasetPath, encrypt, compress,
 			hpcTransferInfo.heappeURL, hpcTransferInfo.jobID, hpcTransferInfo.taskID)
@@ -1165,7 +1248,7 @@ func (o *ActionOperator) updateRequestsStatus(ctx context.Context, ddiClient ddi
 func (o *ActionOperator) getGroupIdentifier(fileName, groupPattern string) string {
 	var result string
 	if groupPattern == "" {
-		return result
+		return allFilesGroupID
 	}
 
 	// TODO : remove
@@ -1185,29 +1268,27 @@ func (o *ActionOperator) setDestinationDatasetPath(ctx context.Context, ddiClien
 
 	resultPath := hpcJobMonitoringInfo.defaultPath
 
-	if hpcJobMonitoringInfo.groupID == "" {
-		return resultPath, nil
-	}
-
 	existingDataset, ok := datasetReplication[hpcJobMonitoringInfo.groupID]
-	if ok {
+	if ok && existingDataset.DatasetPath != "" {
 		return existingDataset.DatasetPath, nil
 	}
 
-	// Create a dataset
-	metadata := hpcJobMonitoringInfo.metadata
-	metadata.Title = fmt.Sprintf("%s - ID %s", metadata.Title, hpcJobMonitoringInfo.groupID)
-	internalID, err := ddiClient.CreateEmptyDatasetInProject(token, hpcJobMonitoringInfo.projectName, metadata)
-	if err != nil {
-		return resultPath, errors.Wrapf(err, "Failed to create result dataset at %s for project %s metadata %v",
-			ddiClient.GetDatasetURL(), hpcJobMonitoringInfo.projectName, metadata)
+	if hpcJobMonitoringInfo.groupID != allFilesGroupID {
+		// Create a dataset
+		metadata := hpcJobMonitoringInfo.metadata
+		metadata.Title = fmt.Sprintf("%s - ID %s", metadata.Title, hpcJobMonitoringInfo.groupID)
+		internalID, err := ddiClient.CreateEmptyDatasetInProject(token, hpcJobMonitoringInfo.projectName, metadata)
+		if err != nil {
+			return resultPath, errors.Wrapf(err, "Failed to create result dataset at %s for project %s metadata %v",
+				ddiClient.GetDatasetURL(), hpcJobMonitoringInfo.projectName, metadata)
+		}
+
+		// Add replication info to dataset replication for new completed groups
+		resultPath = path.Join(getDDIProjectPath(hpcJobMonitoringInfo.projectName), internalID)
+
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcJobMonitoringInfo.deploymentID).RegisterAsString(
+			fmt.Sprintf("Created empty dataset %s with metadata %v", resultPath, metadata))
 	}
-
-	// Add replication info to dataset replication for new completed groups
-	resultPath = path.Join(getDDIProjectPath(hpcJobMonitoringInfo.projectName), internalID)
-
-	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcJobMonitoringInfo.deploymentID).RegisterAsString(
-		fmt.Sprintf("Created empty dataset %s with metadata %v", resultPath, metadata))
 
 	replications := make(map[string]ReplicationInfo)
 	if len(hpcJobMonitoringInfo.replicationSites) > 0 {
@@ -1222,7 +1303,7 @@ func (o *ActionOperator) setDestinationDatasetPath(ctx context.Context, ddiClien
 		Replication: replications,
 	}
 
-	err = deployments.SetAttributeComplexForAllInstances(ctx, hpcJobMonitoringInfo.deploymentID, hpcJobMonitoringInfo.nodeName,
+	err := deployments.SetAttributeComplexForAllInstances(ctx, hpcJobMonitoringInfo.deploymentID, hpcJobMonitoringInfo.nodeName,
 		datasetReplicationConsulAttribute, datasetReplication)
 	if err != nil {
 		return resultPath, errors.Wrapf(err, "Failed to store %s %s %s value %+v", hpcJobMonitoringInfo.deploymentID,
@@ -1293,4 +1374,26 @@ func (o *ActionOperator) findMatchingContent(listing *ddi.DatasetListing, fPatte
 func getDDIProjectPath(projectName string) string {
 	projectPath := fmt.Sprintf(projectPathPattern, md5.Sum([]byte(projectName)))
 	return projectPath
+}
+
+func getHEAppEClient(ctx context.Context, cfg config.Configuration, deploymentID, nodeName, accessToken, user string) (heappe.Client, error) {
+	locationMgr, err := locations.GetManager(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	locationProps, err := locationMgr.GetLocationPropertiesForNode(ctx, deploymentID, nodeName, "heappe")
+	if err != nil {
+		return nil, err
+	}
+
+	aaiClient := common.GetAAIClient(deploymentID, locationProps)
+
+	var refreshTokenFunc heappe.RefreshTokenFunc = func() (string, error) {
+		log.Printf("HEAppE requests to refresh token for deployment %s\n", deploymentID)
+		accessToken, _, err := aaiClient.RefreshToken(ctx)
+		return accessToken, err
+	}
+
+	return heappe.GetClient(locationProps, user, accessToken, refreshTokenFunc)
 }

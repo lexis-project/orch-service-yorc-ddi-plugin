@@ -38,6 +38,7 @@ import (
 type StoreRunningHPCJobFilesToDDI struct {
 	*common.DDIExecution
 	MonitoringTimeInterval time.Duration
+	User                   string
 }
 
 // ExecuteAsync executes an asynchronous operation
@@ -106,7 +107,33 @@ func (e *StoreRunningHPCJobFilesToDDI) ExecuteAsync(ctx context.Context) (*prov.
 		compress = "yes"
 	}
 
+	// Keep directory tree of files staged to DDI
+	keepDirectoryTree, err := deployments.GetBooleanNodeProperty(ctx, e.DeploymentID, e.NodeName, keepDirectoryTreeProperty)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "Failed to get %s property for deployment %s node %s", keepDirectoryTreeProperty, e.DeploymentID, e.NodeName)
+	}
+
+	// List of sites where to replicate datasets
+	val, err = deployments.GetNodePropertyValue(ctx, e.DeploymentID, e.NodeName, replicationSitesProperty)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "Failed to get %s property for deployment %s node %s", replicationSitesProperty, e.DeploymentID, e.NodeName)
+	}
+	var replicationSites []string
+	var replicationSitesStr string
+	if val != nil && val.RawString() != "" {
+		replicationSitesStr = val.RawString()
+		err = json.Unmarshal([]byte(replicationSitesStr), &replicationSites)
+		if err != nil {
+			return nil, 0, errors.Wrapf(err, "Failed to parse %s property for deployment %s node %s, value %s",
+				replicationSitesProperty, e.DeploymentID, e.NodeName, replicationSitesStr)
+		}
+	}
+
 	// Dataset metadata
+	val, err = deployments.GetNodePropertyValue(ctx, e.DeploymentID, e.NodeName, metadataProperty)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "Failed to get metadata property for deployment %s node %s", e.DeploymentID, e.NodeName)
+	}
 	var metadata ddi.Metadata
 	var metadataStr string
 	if val != nil && val.RawString() != "" {
@@ -135,6 +162,9 @@ func (e *StoreRunningHPCJobFilesToDDI) ExecuteAsync(ctx context.Context) (*prov.
 	data[actionDataOperation] = string(operationStr)
 	data[actionDataEncrypt] = encrypt
 	data[actionDataCompress] = compress
+	data[actionDataReplicationSites] = replicationSitesStr
+	data[actionDataUser] = e.User
+	data[actionDataKeepDirTree] = strconv.FormatBool(keepDirectoryTree)
 
 	return &prov.Action{ActionType: StoreRunningHPCJobFilesToDDIAction, Data: data}, e.MonitoringTimeInterval, nil
 }
@@ -230,6 +260,14 @@ func (e *StoreRunningHPCJobFilesToDDI) Execute(ctx context.Context) error {
 			toBeStoredFilesConsulAttribute, toBeStoredFiles)
 		if err != nil {
 			return errors.Wrapf(err, "Failed to store %s %s %s value %+v", e.DeploymentID, e.NodeName, toBeStoredFilesConsulAttribute, toBeStoredFiles)
+		}
+
+		// Initializing the map of datasets that will be created by group of files (here one dataset for all files)
+		datasetReplication := make(map[string]DatasetReplicationInfo)
+		err = deployments.SetAttributeComplexForAllInstances(ctx, e.DeploymentID, e.NodeName,
+			datasetReplicationConsulAttribute, datasetReplication)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to store %s %s %s value %+v", e.DeploymentID, e.NodeName, datasetReplicationConsulAttribute, datasetReplication)
 		}
 
 	case tosca.RunnableCancelOperationName:

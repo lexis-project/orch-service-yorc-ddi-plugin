@@ -119,7 +119,9 @@ func MatchesFilter(fileName string, filesPatterns []string) (bool, error) {
 			return true, err
 		}
 	}
-
+	if len(filesPatterns) > 0 {
+		log.Debugf("%s matches no pattern in %v\n", fileName, filesPatterns)
+	}
 	return (len(filesPatterns) == 0), nil
 }
 
@@ -232,12 +234,12 @@ func (e *DDIExecution) GetHPCJobChangedFilesSinceStartup(ctx context.Context) ([
 	// Keeping only the files since job start not already stored, removing any input file added before
 	// and removing files not matching the filters if any is defined
 	var newFilesUpdates []ChangedFile
-	layout = "2006-01-02T15:04:00Z"
+	layout = "2006-01-02T15:04:05Z"
 	for _, changedFile := range changedFiles {
 		changedTime, err := time.Parse(layout, changedFile.LastModifiedDate)
 		if err != nil {
-			log.Debugf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s",
-				e.DeploymentID, e.NodeName, changedFile.LastModifiedDate, layout)
+			log.Printf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s : %s\n",
+				e.DeploymentID, e.NodeName, changedFile.LastModifiedDate, layout, err.Error())
 			continue
 		}
 
@@ -563,7 +565,7 @@ func (e *DDIExecution) GetDDILocationFromComputeLocation(ctx context.Context,
 
 }
 
-// GetAccessToken returns the access token for this dpeloyment
+// GetAccessToken returns the access token for this deployment
 func GetAccessToken(ctx context.Context, cfg config.Configuration, deploymentID, nodeName string) (string, error) {
 	locationMgr, err := locations.GetManager(cfg)
 	if err != nil {

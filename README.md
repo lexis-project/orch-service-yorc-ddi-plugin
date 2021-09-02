@@ -17,6 +17,9 @@ Job deleting a dataset from Cloud staging area
 ### org.lexis.common.ddi.nodes.DDIToHPCTaskJob
 Job executing a transfer of dataset from DDI to HPC in a directory for a given
 task in the job
+### org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob
+Job executing a transfer of dataset from DDI to HPC in a directory for a given
+task in the job, the dataset path being computed at runtime
 ### org.lexis.common.ddi.nodes.HPCToDDIJob
 Job executing a transfer of data from a HPC job directory to DDI
 ### org.lexis.common.ddi.nodes.CloudToHPCJob

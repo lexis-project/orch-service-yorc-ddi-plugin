@@ -429,7 +429,7 @@ func (d *ddiClient) SubmitHPCToDDIDataTransfer(metadata Metadata, token, sourceS
 	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
 		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
 	if err != nil {
-		err = errors.Wrapf(err, "Failed to submit HPC %s %s %s to DDI %s data transfer", heappeURL, sourceSystem, hpcDirectoryPath, ddiPath)
+		err = errors.Wrapf(err, "Failed to submit HPC to DDI data transfer request %s", requestStr)
 	}
 
 	return response.RequestID, err
@@ -461,7 +461,7 @@ func (d *ddiClient) SubmitHPCToCloudDataTransfer(metadata Metadata, token, sourc
 	err := d.httpStagingClient.doRequest(http.MethodPost, ddiStagingStageREST,
 		[]int{http.StatusOK, http.StatusCreated, http.StatusAccepted}, token, request, &response)
 	if err != nil {
-		err = errors.Wrapf(err, "Failed to submit HPC %s %s %s to cloud %s %s data transfer", heappeURL, sourceSystem, hpcDirectoryPath, d.cloudStagingArea.Name, cloudStagingAreaDestinationPath)
+		err = errors.Wrapf(err, "Failed to submit HPC to cloud data transfer %s", requestStr)
 	}
 
 	return response.RequestID, err
