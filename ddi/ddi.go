@@ -239,6 +239,7 @@ func (d *ddiClient) GetDisableCloudAccessRequestStatus(token, requestID string) 
 // SubmitDDIToCloudDataTransfer submits a data transfer request from DDI to Cloud
 func (d *ddiClient) SubmitDDIToCloudDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, cloudStagingAreaDestinationPath, encryption, compression string) (string, error) {
 
+	ddiSourcePath = strings.TrimSuffix(ddiSourcePath, "/")
 	request := DataTransferRequest{
 		Metadata:     metadata,
 		SourceSystem: ddiSourceSystem,
@@ -372,6 +373,7 @@ func (d *ddiClient) SubmitCloudStagingAreaDataDeletion(token, path string) (stri
 // SubmitDDIToHPCDataTransfer submits a data transfer request from DDI to HPC
 func (d *ddiClient) SubmitDDIToHPCDataTransfer(metadata Metadata, token, ddiSourceSystem, ddiSourcePath, targetSystem, hpcDirectoryPath, encryption, compression, heappeURL string, jobID, taskID int64) (string, error) {
 
+	ddiSourcePath = strings.TrimSuffix(ddiSourcePath, "/")
 	request := HPCDataTransferRequest{
 		DataTransferRequest{
 			Metadata:     metadata,
