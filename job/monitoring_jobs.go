@@ -322,6 +322,8 @@ func (o *ActionOperator) getRequestStatusFromDDIStatus(ddiStatus string) (string
 		requestStatus = requestStatusRunning
 	case ddiStatus == ddi.TaskStatusTransferCompletedMsg:
 		requestStatus = requestStatusCompleted
+	case ddiStatus == ddi.TaskStatusReplicationCompletedMsg:
+		requestStatus = requestStatusCompleted
 	case ddiStatus == ddi.TaskStatusDataDeletedMsg:
 		requestStatus = requestStatusCompleted
 	case ddiStatus == ddi.TaskStatusCloudAccessEnabledMsg:
@@ -947,7 +949,7 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 		replicationSites: replicationSites,
 	}
 	remainingRequests, completedGroupsIDs, err := o.updateRequestsStatus(ctx, ddiClient,
-		storedFiles, toBeStoredUpdated, datasetReplication, hpcTransferInfo, encrypt, compress)
+		storedFiles, toBeStoredUpdated, datasetReplication, hpcTransferInfo, encrypt, compress, taskIDStr, keepDirTree)
 	if err != nil {
 		return true, err
 	}
@@ -1112,7 +1114,7 @@ func (o *ActionOperator) updateReplicationStatus(ctx context.Context, ddiClient 
 func (o *ActionOperator) updateRequestsStatus(ctx context.Context, ddiClient ddi.Client,
 	storedFiles map[string]StoredFileInfo, toBeStored map[string]ToBeStoredFileInfo,
 	datasetReplication map[string]DatasetReplicationInfo,
-	hpcTransferInfo hpcTransferContextInfo, encrypt, compress string) (map[string]StoredFileInfo, []string, error) {
+	hpcTransferInfo hpcTransferContextInfo, encrypt, compress, taskIDStr string, keepDirTree bool) (map[string]StoredFileInfo, []string, error) {
 
 	remainingRequests := make(map[string]StoredFileInfo)
 	failedRequests := make(map[string]StoredFileInfo)
@@ -1206,11 +1208,14 @@ func (o *ActionOperator) updateRequestsStatus(ctx context.Context, ddiClient ddi
 		} else {
 			datasetPath = datasetReplication[failedRequest.GroupIdentifier].DatasetPath
 		}
+
+		destPath := getDestinationDirectoryPath(name, taskIDStr, datasetPath, keepDirTree)
+
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, hpcTransferInfo.deploymentID).Registerf(
 			"Submitting data transfer request source %s path %s, destination %s path %s, encrypt %s, compress %s, URL %s, job %d, task %d",
-			hpcTransferInfo.sourceSystem, sourcePath, ddiClient.GetDDIAreaName(), datasetPath, encrypt, compress, hpcTransferInfo.heappeURL, hpcTransferInfo.jobID, hpcTransferInfo.taskID)
+			hpcTransferInfo.sourceSystem, sourcePath, ddiClient.GetDDIAreaName(), destPath, encrypt, compress, hpcTransferInfo.heappeURL, hpcTransferInfo.jobID, hpcTransferInfo.taskID)
 		requestID, submitErr := ddiClient.SubmitHPCToDDIDataTransfer(hpcTransferInfo.metadata, hpcTransferInfo.token, hpcTransferInfo.sourceSystem,
-			sourcePath, datasetPath, encrypt, compress,
+			sourcePath, destPath, encrypt, compress,
 			hpcTransferInfo.heappeURL, hpcTransferInfo.jobID, hpcTransferInfo.taskID)
 		if submitErr != nil {
 			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelWARN, hpcTransferInfo.deploymentID).RegisterAsString(
