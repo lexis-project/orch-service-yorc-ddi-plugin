@@ -26,15 +26,16 @@ type LocationCloudStagingArea struct {
 
 // Metadata holds metadata to define for a dataset
 type Metadata struct {
-	Creator           []string `json:"creator,omitempty"`
-	Contributor       []string `json:"contributor,omitempty"`
-	Publisher         []string `json:"publisher,omitempty"`
-	Owner             []string `json:"owner,omitempty"`
-	Identifier        string   `json:"identifier,omitempty"`
-	PublicationYear   string   `json:"publicationYear,omitempty"`
-	ResourceType      string   `json:"resourceType,omitempty"`
-	Title             string   `json:"title,omitempty"`
-	RelatedIdentifier []string `json:"relatedIdentifier,omitempty"`
+	Creator             []string   `json:"creator,omitempty"`
+	Contributor         []string   `json:"contributor,omitempty"`
+	Publisher           []string   `json:"publisher,omitempty"`
+	Owner               []string   `json:"owner,omitempty"`
+	Identifier          string     `json:"identifier,omitempty"`
+	PublicationYear     string     `json:"publicationYear,omitempty"`
+	ResourceType        string     `json:"resourceType,omitempty"`
+	Title               string     `json:"title,omitempty"`
+	RelatedIdentifier   []string   `json:"relatedIdentifier,omitempty"`
+	AlternateIdentifier [][]string `json:"AlternateIdentifier,omitempty"`
 }
 
 // DataTransferRequest holds parameters of a data transfer request

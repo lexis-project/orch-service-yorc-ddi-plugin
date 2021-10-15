@@ -17,6 +17,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/ystia/yorc/v4/deployments"
 	"github.com/ystia/yorc/v4/events"
 	"github.com/ystia/yorc/v4/locations"
+	"github.com/ystia/yorc/v4/log"
 	"github.com/ystia/yorc/v4/prov"
 	"github.com/ystia/yorc/v4/tosca"
 )
@@ -39,6 +41,7 @@ const (
 	metadataProperty                      = "metadata"
 	filesPatternProperty                  = "needed_files_patterns"
 	elapsedTimeMinutesProperty            = "last_modification_elapsed_time_minutes"
+	keepDirectoryTreeProperty             = "keep_directory_tree"
 	projectProperty                       = "project"
 	taskNameProperty                      = "task_name"
 	groupFilesPatternProperty             = "group_files_pattern"
@@ -76,6 +79,7 @@ const (
 	ipAddressEnvVar                       = "IP_ADDRESS"
 	filePatternEnvVar                     = "FILE_PATTERN"
 	jobChangedFilesEnvVar                 = "JOB_CHANGED_FILES"
+	jobNodeNameEnvVar                     = "JOB_NODE_NAME"
 	jobStartDateEnvVar                    = "JOB_START_DATE"
 	jobStateEnvVar                        = "JOB_STATE"
 	dataTransferCapability                = "data_transfer"
@@ -183,6 +187,63 @@ func (e *DDIJobExecution) getDDIAreaNames(ctx context.Context) ([]string, error)
 	}
 
 	return ddiAreaNames, err
+}
+
+func (e *DDIJobExecution) getAreasForDDIDataset(ctx context.Context, ddiClient ddi.Client, datasetPath, privilegeArea string) ([]string, error) {
+	var ddiAreas []string
+
+	// First get the DDI locations
+	ddiAreaNames, err := e.getDDIAreaNames(ctx)
+	if err != nil {
+		return ddiAreas, err
+	}
+	// Get the access token
+	token, err := e.AAIClient.GetAccessToken()
+	if err != nil {
+		return ddiAreas, err
+	}
+
+	// The input path could be the path of a file in a dataset
+	sourcePath := datasetPath
+	splitPath := strings.SplitN(datasetPath, "/", 4)
+	if len(splitPath) > 3 {
+		sourcePath = path.Join(splitPath[0], splitPath[1], splitPath[2])
+	}
+
+	// Then check which one has a dataset or a replica
+	for _, ddiAreaName := range ddiAreaNames {
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
+			"Getting replication status for %q source %q path %q",
+			e.NodeName, ddiAreaName, sourcePath)
+		status, errClient := ddiClient.GetReplicationStatus(token, ddiAreaName, sourcePath)
+		if errClient != nil {
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelWARN, e.DeploymentID).Registerf(
+				"Failed to get replication status for %q source %q path %q: %v",
+				e.NodeName, ddiAreaName, sourcePath, errClient)
+			continue
+		}
+		switch status {
+		case ddi.ReplicationStatusParentDataset,
+			ddi.ReplicationStatusReplicaDataset,
+			ddi.ReplicationStatusDatasetNotReplicated:
+			if ddiAreaName == privilegeArea {
+				return []string{ddiAreaName}, err
+			} else {
+				ddiAreas = append(ddiAreas, ddiAreaName)
+			}
+
+		case ddi.ReplicationStatusNoSuchDataset:
+			log.Debugf("Dataset %s not in %s", sourcePath, ddiAreaName)
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
+				"Node %s dataset %s not in %s",
+				e.NodeName, sourcePath, ddiAreaName)
+		default:
+			log.Printf("[WARN] unexpected replication status for %s %s: %s", ddiAreaName, sourcePath, status)
+		}
+	}
+
+	return ddiAreas, err
+
 }
 
 func getDDIClient(ctx context.Context, cfg config.Configuration, deploymentID, nodeName string) (ddi.Client, error) {

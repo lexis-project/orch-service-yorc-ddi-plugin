@@ -119,7 +119,9 @@ func MatchesFilter(fileName string, filesPatterns []string) (bool, error) {
 			return true, err
 		}
 	}
-
+	if len(filesPatterns) > 0 {
+		log.Debugf("%s matches no pattern in %v\n", fileName, filesPatterns)
+	}
 	return (len(filesPatterns) == 0), nil
 }
 
@@ -232,12 +234,12 @@ func (e *DDIExecution) GetHPCJobChangedFilesSinceStartup(ctx context.Context) ([
 	// Keeping only the files since job start not already stored, removing any input file added before
 	// and removing files not matching the filters if any is defined
 	var newFilesUpdates []ChangedFile
-	layout = "2006-01-02T15:04:00Z"
+	layout = "2006-01-02T15:04:05Z"
 	for _, changedFile := range changedFiles {
 		changedTime, err := time.Parse(layout, changedFile.LastModifiedDate)
 		if err != nil {
-			log.Debugf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s",
-				e.DeploymentID, e.NodeName, changedFile.LastModifiedDate, layout)
+			log.Printf("Deployment %s node %s ignoring last modified date %s which has not the expected layout %s : %s\n",
+				e.DeploymentID, e.NodeName, changedFile.LastModifiedDate, layout, err.Error())
 			continue
 		}
 
@@ -267,17 +269,17 @@ func (e *DDIExecution) setLocationFromAssociatedTarget(ctx context.Context, targ
 		return locationName, err
 	}
 
-	log.Printf("DEBUG got location for target associated to %s with cap %s\n", e.NodeName, targetCapability)
+	log.Debugf("Got location for target associated to %s with cap %s\n", e.NodeName, targetCapability)
 	// Get the associated target node name if any
 	var targetNodeName string
 	for _, nodeReq := range nodeTemplate.Requirements {
 		for _, reqAssignment := range nodeReq {
 			if reqAssignment.Capability == targetCapability {
-				log.Printf("DEBUG found target %s associated to %s\n", reqAssignment.Node, e.NodeName)
+				log.Debugf("found target %s associated to %s\n", reqAssignment.Node, e.NodeName)
 				targetNodeName = reqAssignment.Node
 				break
 			} else {
-				log.Printf("DEBUG not target %s associated to %s through %s\n", reqAssignment.Node, e.NodeName, reqAssignment.Capability)
+				log.Debugf("no target %s associated to %s through %s\n", reqAssignment.Node, e.NodeName, reqAssignment.Capability)
 			}
 		}
 	}
@@ -292,7 +294,7 @@ func (e *DDIExecution) setLocationFromAssociatedTarget(ctx context.Context, targ
 	}
 	var targetLocationName string
 	if targetNodeTemplate.Metadata != nil {
-		log.Printf("DEBUG target node %s metadata : %+v\n", targetNodeName, targetNodeTemplate.Metadata)
+		log.Debugf("target node %s metadata : %+v\n", targetNodeName, targetNodeTemplate.Metadata)
 		targetLocationName = targetNodeTemplate.Metadata[tosca.MetadataLocationNameKey]
 	}
 	if targetLocationName == "" {
@@ -563,7 +565,7 @@ func (e *DDIExecution) GetDDILocationFromComputeLocation(ctx context.Context,
 
 }
 
-// GetAccessToken returns the access token for this dpeloyment
+// GetAccessToken returns the access token for this deployment
 func GetAccessToken(ctx context.Context, cfg config.Configuration, deploymentID, nodeName string) (string, error) {
 	locationMgr, err := locations.GetManager(cfg)
 	if err != nil {

@@ -43,15 +43,19 @@ const (
 	disableCloudStagingAreaJobType          = "org.lexis.common.ddi.nodes.DisableCloudStagingAreaAccessJob"
 	ddiToCloudJobType                       = "org.lexis.common.ddi.nodes.DDIToCloudJob"
 	ddiToHPCTaskJobType                     = "org.lexis.common.ddi.nodes.DDIToHPCTaskJob"
-	hpcToDDIJobType                         = "org.lexis.common.ddi.nodes.HPCToDDIJob"
-	ddiRuntimeToCloudJobType                = "org.lexis.common.ddi.nodes.DDIRuntimeToCloudJob"
 	ddiRuntimeToHPCTaskJobType              = "org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob"
+	hpcToDDIJobType                         = "org.lexis.common.ddi.nodes.HPCToDDIJob"
+	ddiRuntimeFilesToCloudJobType           = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob"
+	ddiRuntimeFilesToHPCTaskJobType         = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob"
 	cloudToDDIJobType                       = "org.lexis.common.ddi.nodes.CloudToDDIJob"
+	cloudToHPCJobType                       = "org.lexis.common.ddi.nodes.CloudToHPCJob"
+	hpcToCloudJobType                       = "org.lexis.common.ddi.nodes.HPCToCloudJob"
 	waitForDDIDatasetJobType                = "org.lexis.common.ddi.nodes.WaitForDDIDatasetJob"
 	storeRunningHPCJobType                  = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob"
 	storeRunningHPCJobGroupByDatasetType    = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIGroupByDatasetJob"
 	deleteCloudDataJobType                  = "org.lexis.common.ddi.nodes.DeleteCloudDataJob"
 	getDDIDatasetInfoJobType                = "org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob"
+	GetDDIRuntimeDatasetInfoJobType         = "org.lexis.common.ddi.nodes.GetDDIRuntimeDatasetInfoJob"
 	sshfsMountStagingAreaDataset            = "org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset"
 )
 
@@ -91,7 +95,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 
 	// Defining a long monitoring internal for very long jobs, that will override
 	// the monitoring time interval
-	longMonitoringTimeInterval := time.Minute * 5
+	longMonitoringTimeInterval := time.Minute * 10
 	if longMonitoringTimeInterval < monitoringTimeInterval {
 		longMonitoringTimeInterval = monitoringTimeInterval
 	}
@@ -219,11 +223,24 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		}
 	}
 
+	// Getting user info
+	userInfo, err := aaiClient.GetUserInfo(ctx, accessToken)
+	if err != nil {
+		return exec, errors.Wrapf(err, "Failed to get user info from access token for node %s", nodeName)
+	}
+
 	isDDIDatasetInfoJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, getDDIDatasetInfoJobType)
 	if err != nil {
 		return exec, err
 	}
-	if isDDIDatasetInfoJob {
+	isRuntimeDDIDatasetInfoJob := false
+	if !isDDIDatasetInfoJob {
+		isRuntimeDDIDatasetInfoJob, err = deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, GetDDIRuntimeDatasetInfoJobType)
+		if err != nil {
+			return exec, err
+		}
+	}
+	if isDDIDatasetInfoJob || isRuntimeDDIDatasetInfoJob {
 		exec = &job.DDIDatasetInfoExecution{
 			DDIJobExecution: &job.DDIJobExecution{
 				DDIExecution: &common.DDIExecution{
@@ -290,11 +307,11 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
-	isDDIRuntimeToCloudJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiRuntimeToCloudJobType)
+	isDDIRuntimeFilesToCloudJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiRuntimeFilesToCloudJobType)
 	if err != nil {
 		return exec, err
 	}
-	if isDDIRuntimeToCloudJob {
+	if isDDIRuntimeFilesToCloudJob {
 		exec = &job.DDIRuntimeToCloudExecution{
 			DDIJobExecution: &job.DDIJobExecution{
 				DDIExecution: &common.DDIExecution{
@@ -338,11 +355,66 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
+	isCloudToHPCJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, cloudToHPCJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isCloudToHPCJob {
+		exec = &job.CloudToHPCJobExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.DataTransferAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+
+		return exec, exec.ResolveExecution(ctx)
+	}
+
+	isHPCToCloudJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, hpcToCloudJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isHPCToCloudJob {
+		exec = &job.HPCToCloudJobExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.DataTransferAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+
+		return exec, exec.ResolveExecution(ctx)
+	}
+
 	isDDIToHPCTaskJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiToHPCTaskJobType)
 	if err != nil {
 		return exec, err
 	}
-	if isDDIToHPCTaskJob {
+	isRuntimeDDIToHPCTaskJob := false
+	if !isDDIToHPCTaskJob {
+		isRuntimeDDIToHPCTaskJob, err = deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiRuntimeToHPCTaskJobType)
+		if err != nil {
+			return exec, err
+		}
+	}
+	if isDDIToHPCTaskJob || isRuntimeDDIToHPCTaskJob {
 		exec = &job.DDIToHPCExecution{
 			DDIJobExecution: &job.DDIJobExecution{
 				DDIExecution: &common.DDIExecution{
@@ -386,11 +458,11 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
-	isDDIRuntimeToHPCTaskJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiRuntimeToHPCTaskJobType)
+	isDDIRuntimeFilesToHPCTaskJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, ddiRuntimeFilesToHPCTaskJobType)
 	if err != nil {
 		return exec, err
 	}
-	if isDDIRuntimeToHPCTaskJob {
+	if isDDIRuntimeFilesToHPCTaskJob {
 		exec = &job.DDIRuntimeToHPCExecution{
 			DDIJobExecution: &job.DDIJobExecution{
 				DDIExecution: &common.DDIExecution{
@@ -448,6 +520,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 				AAIClient:    aaiClient,
 			},
 			MonitoringTimeInterval: longMonitoringTimeInterval,
+			User:                   userInfo.GetName(),
 		}
 
 		return exec, exec.ResolveExecution(ctx)
@@ -469,6 +542,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 				AAIClient:    aaiClient,
 			},
 			MonitoringTimeInterval: longMonitoringTimeInterval,
+			User:                   userInfo.GetName(),
 		}
 
 		return exec, exec.ResolveExecution(ctx)

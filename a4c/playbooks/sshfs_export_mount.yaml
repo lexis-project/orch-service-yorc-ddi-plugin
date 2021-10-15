@@ -93,4 +93,4 @@
         recurse: yes
         mode: 0744
     - name: Mount the sshfs file system
-      command: "sshfs  -o StrictHostKeyChecking=no,reconnect,IdentityFile={{ privatekey.path }} {{ response.sshfs }} {{ MOUNT_POINT_DIRECTORY }}"
+      command: "sshfs  -o AddressFamily=inet,StrictHostKeyChecking=no,reconnect,IdentityFile={{ privatekey.path }} {{ response.sshfs }} {{ MOUNT_POINT_DIRECTORY }}"

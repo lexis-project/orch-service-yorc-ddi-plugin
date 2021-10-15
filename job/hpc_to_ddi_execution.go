@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -151,6 +152,11 @@ func (e *HPCToDDIExecution) submitDataTransferRequest(ctx context.Context) error
 				taskIDStr, e.DeploymentID, e.NodeName)
 			return err
 		}
+	}
+
+	sourceSubDirPath := e.GetValueFromEnvInputs(sourceSubDirEnvVar)
+	if sourceSubDirPath != "" {
+		sourcePath = filepath.Join(sourcePath, sourceSubDirPath)
 	}
 
 	metadata, err := e.getMetadata(ctx)

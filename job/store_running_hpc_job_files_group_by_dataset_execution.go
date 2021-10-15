@@ -36,6 +36,7 @@ import (
 type StoreRunningHPCJobFilesGroupByDataset struct {
 	*common.DDIExecution
 	MonitoringTimeInterval time.Duration
+	User                   string
 }
 
 // ExecuteAsync executes an asynchronous operation
@@ -114,6 +115,12 @@ func (e *StoreRunningHPCJobFilesGroupByDataset) ExecuteAsync(ctx context.Context
 		compress = "yes"
 	}
 
+	// Keep directory tree of files staged to DDI
+	keepDirectoryTree, err := deployments.GetBooleanNodeProperty(ctx, e.DeploymentID, e.NodeName, keepDirectoryTreeProperty)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "Failed to get %s property for deployment %s node %s", keepDirectoryTreeProperty, e.DeploymentID, e.NodeName)
+	}
+
 	// List of sites where to replicate datasets
 	val, err = deployments.GetNodePropertyValue(ctx, e.DeploymentID, e.NodeName, replicationSitesProperty)
 	if err != nil {
@@ -176,6 +183,8 @@ func (e *StoreRunningHPCJobFilesGroupByDataset) ExecuteAsync(ctx context.Context
 	data[actionDataMetadata] = metadataStr
 	data[actionDataEncrypt] = encrypt
 	data[actionDataCompress] = compress
+	data[actionDataUser] = e.User
+	data[actionDataKeepDirTree] = strconv.FormatBool(keepDirectoryTree)
 
 	return &prov.Action{ActionType: StoreRunningHPCJobFilesGroupByDatasetAction, Data: data}, e.MonitoringTimeInterval, nil
 }

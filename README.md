@@ -17,8 +17,16 @@ Job deleting a dataset from Cloud staging area
 ### org.lexis.common.ddi.nodes.DDIToHPCTaskJob
 Job executing a transfer of dataset from DDI to HPC in a directory for a given
 task in the job
+### org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob
+Job executing a transfer of dataset from DDI to HPC in a directory for a given
+task in the job, the dataset path being computed at runtime
 ### org.lexis.common.ddi.nodes.HPCToDDIJob
 Job executing a transfer of data from a HPC job directory to DDI
+### org.lexis.common.ddi.nodes.CloudToHPCJob
+Job executing a transfer of dataset from Cloud staging area to HPC in a directory for a given
+task in the job
+### org.lexis.common.ddi.nodes.HPCToCloudIJob
+Job executing a transfer of dataset from a HPC job directory to Cloud Staging area
 ### org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob
 Job monitoring a HEApPE job and transferring new files produced by this HEAppE job
 to DDI, until this HEAppE job ends
@@ -29,13 +37,11 @@ to a pattern.
 ### org.lexis.common.ddi.nodes.WaitForDDIDatasetJob
 Job waiting for a dataset to appear in DDI, and optionally waiting for files of
 a given pattern to appear in this dataset
-### org.lexis.common.ddi.nodes.DDIRuntimeToCloudJob
-Job executing a transfer of dataset from DDI to Cloud staging area, the dataset
+### org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob
+Job executing a transfer of files in dataset from DDI to Cloud staging area, the dataset
 being provided at runtime by an associated component
-(while org.lexis.common.ddi.nodes.DDIToCloudJob has the DDI dataset path to
-transfer as a property, statically defined before the execution of the workflow)
-### org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob
-Job executing a transfer of dataset from DDI to HPC in a directory for a given
+### org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob
+Job executing a transfer of files in a dataset from DDI to HPC in a directory for a given
 task in the job
 ### org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
 Job executing a request to get a DDI dataset info (size, number of files, number

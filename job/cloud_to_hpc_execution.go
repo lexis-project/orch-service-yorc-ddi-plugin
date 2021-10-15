@@ -18,9 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/lexis-project/yorc-ddi-plugin/ddi"
 	"github.com/pkg/errors"
 
 	"github.com/ystia/yorc/v4/deployments"
@@ -28,13 +30,13 @@ import (
 	"github.com/ystia/yorc/v4/tosca"
 )
 
-// DDIToHPCExecution holds DDI to HPC data transfer job Execution properties
-type DDIToHPCExecution struct {
+// CloudToHPCJobExecution holds Cloud staging area to HPC data transfer job Execution properties
+type CloudToHPCJobExecution struct {
 	*DDIJobExecution
 }
 
 // Execute executes a synchronous operation
-func (e *DDIToHPCExecution) Execute(ctx context.Context) error {
+func (e *CloudToHPCJobExecution) Execute(ctx context.Context) error {
 
 	var err error
 	switch strings.ToLower(e.Operation.Name) {
@@ -42,9 +44,13 @@ func (e *DDIToHPCExecution) Execute(ctx context.Context) error {
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
 			"Creating Job %q", e.NodeName)
 		var locationName string
-		locationName, err = e.SetLocationFromAssociatedHPCJob(ctx)
+		locationName, err = e.setLocationFromAssociatedCloudAreaDirectoryProvider(ctx)
+		if err != nil {
+			return err
+		}
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
 			"Location for %s is %s", e.NodeName, locationName)
+		err = e.setCloudStagingAreaAccessDetails(ctx)
 	case uninstallOperation, "standard.delete":
 		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
 			"Deleting Job %q", e.NodeName)
@@ -78,23 +84,32 @@ func (e *DDIToHPCExecution) Execute(ctx context.Context) error {
 	return err
 }
 
-func (e *DDIToHPCExecution) submitDataTransferRequest(ctx context.Context) error {
+func (e *CloudToHPCJobExecution) submitDataTransferRequest(ctx context.Context) error {
 
 	ddiClient, err := getDDIClient(ctx, e.Cfg, e.DeploymentID, e.NodeName)
 	if err != nil {
 		return err
 	}
 
-	sourcePath := e.GetValueFromEnvInputs(ddiDatasetPathEnvVar)
+	sourcePath := e.GetValueFromEnvInputs(cloudStagingAreaDatasetPathEnvVar)
 	if sourcePath == "" {
-		return errors.Errorf("Failed to get path of dataset to transfer from DDI")
+		return errors.Errorf("Failed to get path of dataset to transfer from Cloud staging area")
+	}
+
+	sourceSubDirPath := e.GetValueFromEnvInputs(sourceSubDirEnvVar)
+	if sourceSubDirPath != "" {
+		sourcePath = filepath.Join(sourcePath, sourceSubDirPath)
+	}
+
+	sourceFileName := e.GetValueFromEnvInputs(sourceFileNameEnvVar)
+	if sourceFileName != "" {
+		sourcePath = filepath.Join(sourcePath, sourceFileName)
 	}
 
 	destPath := e.GetValueFromEnvInputs(hpcDirectoryPathEnvVar)
 	if destPath == "" {
 		return errors.Errorf("Failed to get HPC directory path")
 	}
-
 	serverFQDN := e.GetValueFromEnvInputs(hpcServerEnvVar)
 	if serverFQDN == "" {
 		return errors.Errorf("Failed to get HPC server")
@@ -146,10 +161,7 @@ func (e *DDIToHPCExecution) submitDataTransferRequest(ctx context.Context) error
 	}
 	taskDirPath := path.Join(destPath, taskIDStr)
 
-	metadata, err := e.getMetadata(ctx)
-	if err != nil {
-		return err
-	}
+	var metadata ddi.Metadata
 
 	token, err := e.AAIClient.GetAccessToken()
 	if err != nil {
@@ -157,30 +169,15 @@ func (e *DDIToHPCExecution) submitDataTransferRequest(ctx context.Context) error
 	}
 
 	// Check encryption/compression settings
-	decrypt := "no"
-	if e.GetBooleanValueFromEnvInputs(decryptEnvVar) {
-		decrypt = "yes"
-	}
-	uncompress := "no"
-	if e.GetBooleanValueFromEnvInputs(uncompressEnvVar) {
-		uncompress = "yes"
-	}
-
-	ddiAreaNames, err := e.getAreasForDDIDataset(ctx, ddiClient, sourcePath, ddiClient.GetDDIAreaName())
-	if err != nil {
-		return err
-	}
-
-	if len(ddiAreaNames) == 0 {
-		return errors.Errorf("Found no DDI area having dataset path %s", sourcePath)
-	}
+	encrypt := "no"
+	compress := "no"
 
 	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
-		"Submitting data transfer request for %s source %s path %s, destination %s path %s, decrypt %s, uncompress %s, URL %s, job %d, task %d",
-		e.NodeName, ddiAreaNames[0], sourcePath, targetSystem, taskDirPath, decrypt, uncompress, heappeURL, heappeJobID, taskID)
+		"Submitting data transfer request for %s source %s path %s, destination %s path %s, encrypt %s, compress %s, URL %s, job %d, task %d",
+		e.NodeName, ddiClient.GetCloudStagingAreaName(), sourcePath, targetSystem, taskDirPath, encrypt, compress, heappeURL, heappeJobID, taskID)
 
-	requestID, err := ddiClient.SubmitDDIToHPCDataTransfer(metadata, token, ddiAreaNames[0], sourcePath, targetSystem, taskDirPath,
-		decrypt, uncompress, heappeURL, heappeJobID, taskID)
+	requestID, err := ddiClient.SubmiCloudToHPCDataTransfer(metadata, token, sourcePath, targetSystem, taskDirPath, encrypt, compress, heappeURL, heappeJobID, taskID)
+
 	if err != nil {
 		return err
 	}
@@ -189,7 +186,8 @@ func (e *DDIToHPCExecution) submitDataTransferRequest(ctx context.Context) error
 	err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
 		requestIDConsulAttribute, requestID)
 	if err != nil {
-		err = errors.Wrapf(err, "Request %s submitted, but failed to store this request id", requestID)
+		return errors.Wrapf(err, "Request %s submitted, but failed to store this request id", requestID)
 	}
+
 	return err
 }
