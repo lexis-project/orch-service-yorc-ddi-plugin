@@ -95,7 +95,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 
 	// Defining a long monitoring internal for very long jobs, that will override
 	// the monitoring time interval
-	longMonitoringTimeInterval := time.Minute * 10
+	longMonitoringTimeInterval := time.Minute * 3
 	if longMonitoringTimeInterval < monitoringTimeInterval {
 		longMonitoringTimeInterval = monitoringTimeInterval
 	}
@@ -225,6 +225,13 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 
 	// Getting user info
 	userInfo, err := aaiClient.GetUserInfo(ctx, accessToken)
+	if err != nil {
+		accessToken, _, err = aaiClient.RefreshToken(ctx)
+		if err != nil {
+			return exec, errors.Wrapf(err, "Failed to refresh token for orchestrator")
+		}
+		userInfo, err = aaiClient.GetUserInfo(ctx, accessToken)
+	}
 	if err != nil {
 		return exec, errors.Wrapf(err, "Failed to get user info from access token for node %s", nodeName)
 	}

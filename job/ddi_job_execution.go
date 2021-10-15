@@ -74,8 +74,6 @@ const (
 	hpcServerEnvVar                       = "HPC_SERVER"
 	heappeJobIDEnvVar                     = "HEAPPE_JOB_ID"
 	heappeURLEnvVar                       = "HEAPPE_URL"
-	tasksNameIdEnvVar                     = "TASKS_NAME_ID"
-	taskNameEnvVar                        = "TASK_NAME"
 	ipAddressEnvVar                       = "IP_ADDRESS"
 	filePatternEnvVar                     = "FILE_PATTERN"
 	jobChangedFilesEnvVar                 = "JOB_CHANGED_FILES"

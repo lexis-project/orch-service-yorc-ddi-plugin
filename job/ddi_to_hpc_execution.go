@@ -16,8 +16,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
-	"path"
 	"strconv"
 	"strings"
 
@@ -119,32 +117,10 @@ func (e *DDIToHPCExecution) submitDataTransferRequest(ctx context.Context) error
 		return errors.Errorf("Failed to get HEAppE URL of job %d", heappeJobID)
 	}
 
-	taskName := e.GetValueFromEnvInputs(taskNameEnvVar)
-	if taskName == "" {
-		return errors.Errorf("Failed to get task name")
-	}
-
-	strVal := e.GetValueFromEnvInputs(tasksNameIdEnvVar)
-	if strVal == "" {
-		return errors.Errorf("Failed to get map of tasks name-id from associated job")
-	}
-	var tasksNameID map[string]string
-	err = json.Unmarshal([]byte(strVal), &tasksNameID)
+	taskID, taskDirPath, err := e.GetFirstCreatedTaskDetails(ctx, destPath)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to unmarshall map od task name - task id %s", strVal)
-	}
-
-	taskIDStr, found := tasksNameID[taskName]
-	if !found {
-		return errors.Errorf("Failed to find task %s in associated job", taskName)
-	}
-	taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
-	if err != nil {
-		err = errors.Wrapf(err, "Unexpected task ID value %q for deployment %s node %s",
-			taskIDStr, e.DeploymentID, e.NodeName)
 		return err
 	}
-	taskDirPath := path.Join(destPath, taskIDStr)
 
 	metadata, err := e.getMetadata(ctx)
 	if err != nil {

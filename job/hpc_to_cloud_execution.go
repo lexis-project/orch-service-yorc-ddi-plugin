@@ -16,9 +16,7 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -122,38 +120,9 @@ func (e *HPCToCloudJobExecution) submitDataTransferRequest(ctx context.Context) 
 		return errors.Errorf("Failed to get HEAppE URL of job %d", heappeJobID)
 	}
 
-	sourcePath := jobDirPath
-	taskName := e.GetValueFromEnvInputs(taskNameEnvVar)
-	strVal := e.GetValueFromEnvInputs(tasksNameIdEnvVar)
-	if strVal == "" {
-		return errors.Errorf("Failed to get map of tasks name-id from associated job")
-	}
-	var tasksNameID map[string]string
-	err = json.Unmarshal([]byte(strVal), &tasksNameID)
+	taskID, sourcePath, err := e.GetLastDoneTaskDetails(ctx, jobDirPath)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to unmarshall map od task name - task id %s", strVal)
-	}
-	var taskIDStr string
-	if taskName != "" {
-		taskIDStr = tasksNameID[taskName]
-		sourcePath = path.Join(jobDirPath, taskIDStr)
-	} else {
-		// just need to define a task ID for the REST request
-		for _, v := range tasksNameID {
-			taskIDStr = v
-			break
-		}
-	}
-	var taskID int64
-	if taskIDStr == "" {
-		return errors.Errorf("Failed to find task %s in associated job", taskName)
-	} else {
-		taskID, err = strconv.ParseInt(taskIDStr, 10, 64)
-		if err != nil {
-			err = errors.Wrapf(err, "Unexpected Task ID ID value %q for deployment %s node %s",
-				taskIDStr, e.DeploymentID, e.NodeName)
-			return err
-		}
+		return err
 	}
 
 	sourceSubDirPath := e.GetValueFromEnvInputs(sourceSubDirEnvVar)
