@@ -397,7 +397,11 @@ func (o *ActionOperator) monitorDataset(ctx context.Context, cfg config.Configur
 	// First search if there is a dataset with the expected metadata
 	results, err := ddiClient.SearchDataset(token, metadata)
 	if err != nil {
-		return true, errors.Wrapf(err, "failed search datasets with metadata %v", metadata)
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return false, nil
+		} else {
+			return false, errors.Wrapf(err, "failed to search datasets with metadata %v", metadata)
+		}
 	}
 
 	requestStatus := requestStatusRunning
@@ -412,9 +416,9 @@ func (o *ActionOperator) monitorDataset(ctx context.Context, cfg config.Configur
 		var listing ddi.DatasetListing
 		if len(filesPatterns) > 0 {
 			listing, err = ddiClient.ListDataSet(token, datasetRes.Location.InternalID,
-				datasetRes.Location.Access, datasetRes.Location.Project, true)
+				datasetRes.Location.Access, datasetRes.Location.Project, datasetRes.Location.Zone, true)
 			if err != nil {
-				return true, errors.Wrapf(err, "failed to get contents of dataset %s", datasetRes.Location.InternalID)
+				return false, errors.Wrapf(err, "failed to get contents of dataset %s", datasetRes.Location.InternalID)
 			}
 		}
 		projectPath := getDDIProjectPath(datasetRes.Location.Project)
@@ -727,7 +731,8 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 		err = errors.Wrapf(err, "Failed to parse job start time %s, expected layout like %s", startDateStr, layout)
 		return true, err
 	}
-
+	// The job has started
+	// Getting the list of files and keeping only those created/updated after the start date
 	jobNodeName := o.getValueFromEnv(jobNodeNameEnvVar, envInputs)
 	if jobNodeName == "" {
 		return true, errors.Errorf("Failed to get TOSCA node name of associated job")
