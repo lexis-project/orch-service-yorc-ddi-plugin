@@ -84,6 +84,29 @@ func (e *CloudToHPCJobExecution) Execute(ctx context.Context) error {
 
 func (e *CloudToHPCJobExecution) submitDataTransferRequest(ctx context.Context) error {
 
+	heappeJobIDStr := e.GetValueFromEnvInputs(heappeJobIDEnvVar)
+	if heappeJobIDStr == "" {
+		return errors.Errorf("Failed to get ID of associated job")
+	}
+	heappeJobID, err := strconv.ParseInt(heappeJobIDStr, 10, 64)
+	if err != nil {
+		err = errors.Wrapf(err, "Unexpected Job ID value %q for deployment %s node %s",
+			heappeJobIDStr, e.DeploymentID, e.NodeName)
+		return err
+	}
+
+	if heappeJobID == 0 {
+		// Skipped HEAppE job, no staging to do
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, e.DeploymentID).Registerf(
+			"%s Skipping submit of data transfer request to skipped job", e.NodeName)
+		err = deployments.SetAttributeForAllInstances(ctx, e.DeploymentID, e.NodeName,
+			requestIDConsulAttribute, skippedRequestID)
+		if err != nil {
+			err = errors.Wrapf(err, "Failed to store request id %s", skippedRequestID)
+		}
+		return err
+	}
+
 	ddiClient, err := getDDIClient(ctx, e.Cfg, e.DeploymentID, e.NodeName)
 	if err != nil {
 		return err
@@ -115,17 +138,6 @@ func (e *CloudToHPCJobExecution) submitDataTransferRequest(ctx context.Context) 
 
 	res := strings.SplitN(serverFQDN, ".", 2)
 	targetSystem := res[0] + "_home"
-
-	heappeJobIDStr := e.GetValueFromEnvInputs(heappeJobIDEnvVar)
-	if heappeJobIDStr == "" {
-		return errors.Errorf("Failed to get ID of associated job")
-	}
-	heappeJobID, err := strconv.ParseInt(heappeJobIDStr, 10, 64)
-	if err != nil {
-		err = errors.Wrapf(err, "Unexpected Job ID value %q for deployment %s node %s",
-			heappeJobIDStr, e.DeploymentID, e.NodeName)
-		return err
-	}
 
 	heappeURL := e.GetValueFromEnvInputs(heappeURLEnvVar)
 	if heappeURL == "" {

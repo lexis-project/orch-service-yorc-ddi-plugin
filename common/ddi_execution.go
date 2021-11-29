@@ -309,7 +309,7 @@ func (e *DDIExecution) setLocationFromAssociatedTarget(ctx context.Context, targ
 		log.Debugf("target node %s metadata : %+v\n", targetNodeName, targetNodeTemplate.Metadata)
 		targetLocationName = targetNodeTemplate.Metadata[tosca.MetadataLocationNameKey]
 	}
-	if targetLocationName == "" {
+	if targetLocationName == "" || targetLocationName == "SKIPPED" {
 		return locationName, err
 	}
 

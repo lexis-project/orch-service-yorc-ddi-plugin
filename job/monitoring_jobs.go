@@ -161,6 +161,19 @@ type hpcTransferContextInfo struct {
 func (o *ActionOperator) ExecAction(ctx context.Context, cfg config.Configuration, taskID, deploymentID string, action *prov.Action) (bool, error) {
 	log.Debugf("Execute Action with ID:%q, taskID:%q, deploymentID:%q", action.ID, taskID, deploymentID)
 
+	if action.Data[actionDataRequestID] == skippedRequestID {
+		// Done immediately
+		actionData, err := o.getActionData(action)
+		if err != nil {
+			return true, err
+		}
+		err = deployments.SetInstanceStateStringWithContextualLogs(ctx, deploymentID, actionData.nodeName, "0", requestStatusCompleted)
+		if err != nil {
+			log.Printf("Failed to set instance %s %s state %s: %s", deploymentID, actionData.nodeName, requestStatusCompleted, err.Error())
+		}
+		return true, err
+	}
+
 	var deregister bool
 	var err error
 	if action.ActionType == DataTransferAction || action.ActionType == CloudDataDeleteAction ||
