@@ -1402,6 +1402,58 @@ node_types:
           implementation:
             file: ddi-types-a4c.yaml
             type: yorc.artifacts.Deployment.SlurmJob
+  org.lexis.common.ddi.nodes.ReplicateDatasetJob:
+    derived_from: tosca.nodes.Root
+    description: >
+      Replicates a dataset to different sites
+    properties:
+      token:
+        description: OpenID Connect token
+        type: string
+        required: true
+      replication_sites:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of sites on which the dataset should be available
+        required: false
+    attributes:
+      requestid_status:
+        type: map
+        description: |
+          Map of requestIDs providing the status of each replication request
+    requirements:
+      - dataset_provider:
+          capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+          node: tosca.nodes.Root
+          relationship: tosca.relationships.DependsOn
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+        create:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+        delete:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+      tosca.interfaces.node.lifecycle.Runnable:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+          DDI_DATASET_PATH: { get_attribute: [REQ_TARGET, dataset_provider, destination_path] }
+          REPLICATION_SITES: { get_property: [SELF, replication_sites] }
+        submit:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+        run:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
 capability_types:
   org.lexis.common.ddi.capabilities.DDIAccess:
     derived_from: tosca.capabilities.Root

@@ -60,6 +60,7 @@ const (
 	deleteCloudDataJobType                     = "org.lexis.common.ddi.nodes.DeleteCloudDataJob"
 	getDDIDatasetInfoJobType                   = "org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob"
 	GetDDIRuntimeDatasetInfoJobType            = "org.lexis.common.ddi.nodes.GetDDIRuntimeDatasetInfoJob"
+	replicateDatasetJobType                    = "org.lexis.common.ddi.nodes.ReplicateDatasetJob"
 	sshfsMountStagingAreaDataset               = "org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset"
 )
 
@@ -609,6 +610,29 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 					AAIClient:    aaiClient,
 				},
 				ActionType:             job.DisableCloudAccessAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+		return exec, exec.ResolveExecution(ctx)
+	}
+
+	isReplicateDatasetJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, replicateDatasetJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isReplicateDatasetJob {
+		exec = &job.ReplicateDatasetExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.ReplicateDatasetAction,
 				MonitoringTimeInterval: monitoringTimeInterval,
 			},
 		}

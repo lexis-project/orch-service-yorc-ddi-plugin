@@ -76,7 +76,6 @@ const (
 	heappeURLEnvVar                       = "HEAPPE_URL"
 	ipAddressEnvVar                       = "IP_ADDRESS"
 	filePatternEnvVar                     = "FILE_PATTERN"
-	jobChangedFilesEnvVar                 = "JOB_CHANGED_FILES"
 	jobNodeNameEnvVar                     = "JOB_NODE_NAME"
 	jobStartDateEnvVar                    = "JOB_START_DATE"
 	jobStateEnvVar                        = "JOB_STATE"

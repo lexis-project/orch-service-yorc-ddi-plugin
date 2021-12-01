@@ -80,8 +80,9 @@ const (
 	taskStatusPending     = "PENDING"
 	taskStatusRunning     = "RUNNING"
 
-	osCapability        = "tosca.capabilities.OperatingSystem"
-	heappeJobCapability = "org.lexis.common.heappe.capabilities.HeappeJob"
+	osCapability          = "tosca.capabilities.OperatingSystem"
+	heappeJobCapability   = "org.lexis.common.heappe.capabilities.HeappeJob"
+	transferDDICapability = "org.lexis.common.ddi.capabilities.DataTransferDDI"
 )
 
 // ChangedFile holds properties of a file created/updated by a job
@@ -200,6 +201,12 @@ func (e *DDIExecution) SetLocationFromAssociatedCloudInstance(ctx context.Contex
 // according to an associated HPC location
 func (e *DDIExecution) SetLocationFromAssociatedHPCJob(ctx context.Context) (string, error) {
 	return e.setLocationFromAssociatedTarget(ctx, heappeJobCapability)
+}
+
+// SetLocationFromAssociatedTransferJob sets the location of this component
+// according to an associated data transfer to DDI job location
+func (e *DDIExecution) SetLocationFromAssociatedDataTransferJob(ctx context.Context) (string, error) {
+	return e.setLocationFromAssociatedTarget(ctx, transferDDICapability)
 }
 
 // GetHPCJobChangedFilesSinceStartup gets from evironment the list of files modified by a job since

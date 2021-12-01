@@ -46,6 +46,8 @@ task in the job
 ### org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
 Job executing a request to get a DDI dataset info (size, number of files, number
 of small files of size <= 32MB)
+### org.lexis.common.ddi.nodes.ReplicateDatasetJob
+Job executing requests to replicated a dataset to different sites
 ### org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
 Component whose start operation provide info on a directory in a compute
 instance (size, number of files, number of small files of size <= 32MB)

@@ -59,6 +59,8 @@ const (
 	// StoreRunningHPCJobFilesToDDIAction is the action of storing files created/updated
 	// by a running HEAppE job and grouping them in datasets according to a pattern
 	StoreRunningHPCJobFilesGroupByDatasetAction = "store-running-hpc-job-files-group-by-dataset"
+	// ReplicateDatasetAction is the action of replicating a dataset to other sites
+	ReplicateDatasetAction = "replicate-dataset-monitoring"
 
 	requestStatusPending        = "PENDING"
 	requestStatusRunning        = "RUNNING"
@@ -186,6 +188,8 @@ func (o *ActionOperator) ExecAction(ctx context.Context, cfg config.Configuratio
 		deregister, err = o.monitorRunningHPCJob(ctx, cfg, deploymentID, action)
 	} else if action.ActionType == StoreRunningHPCJobFilesGroupByDatasetAction {
 		deregister, err = o.monitorRunningHPCJob(ctx, cfg, deploymentID, action)
+	} else if action.ActionType == ReplicateDatasetAction {
+		deregister, err = o.monitorReplicationJob(ctx, cfg, deploymentID, action)
 	} else {
 		deregister = true
 		err = errors.Errorf("Unsupported actionType %q", action.ActionType)
@@ -527,6 +531,130 @@ func (o *ActionOperator) monitorDataset(ctx context.Context, cfg config.Configur
 	return deregister, err
 }
 
+func (o *ActionOperator) monitorReplicationJob(ctx context.Context, cfg config.Configuration, deploymentID string, action *prov.Action) (bool, error) {
+
+	actionData, err := o.getActionData(action)
+	if err != nil {
+		return true, err
+	}
+
+	var requestIDStatus map[string]string
+	val, err := deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", requestIDStatusConsulAttribute)
+	if err != nil {
+		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns %+v\n", deploymentID, actionData.nodeName, err)
+	}
+	if err == nil && val != nil && val.RawString() != "" {
+		err = json.Unmarshal([]byte(val.RawString()), &requestIDStatus)
+		if err != nil {
+			err = errors.Wrapf(err, "Failed to parse map of replication request IDs %s", val.RawString())
+			return true, err
+		}
+	} else {
+		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns no value\n", deploymentID, actionData.nodeName)
+	}
+
+	if len(requestIDStatus) == 0 {
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).Registerf(
+			"Job %s done as there is no replication request submitted", actionData.nodeName)
+		err := deployments.SetInstanceStateStringWithContextualLogs(ctx, deploymentID, actionData.nodeName, "0", requestStatusCompleted)
+		if err != nil {
+			log.Printf("Failed to set instance %s %s state %s: %s", deploymentID, actionData.nodeName, requestStatusCompleted, err.Error())
+		}
+		return true, err
+	}
+
+	ddiClient, err := getDDIClient(ctx, cfg, deploymentID, actionData.nodeName)
+	if err != nil {
+		return true, err
+	}
+
+	token, err := common.GetAccessToken(ctx, cfg, deploymentID, actionData.nodeName)
+	if err != nil {
+		return true, err
+	}
+
+	var requestIDsInProgress []string
+	changeOccured := false
+	oneReplicationSuccess := false
+	for requestID, requestStatus := range requestIDStatus {
+		if requestStatus == requestStatusCompleted {
+			oneReplicationSuccess = true
+			continue
+		}
+		if requestStatus == requestStatusFailed {
+			continue
+		}
+
+		ddiStatus, _, _, err := ddiClient.GetReplicationsRequestStatus(token, requestID)
+		if err != nil {
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, deploymentID).Registerf(
+				"Job %s failed to get status of replication request %s. Will retry.", actionData.nodeName, requestID)
+			return false, err
+		}
+		newStatus, errorMessage, err := o.getRequestStatusFromDDIStatus(ddiStatus)
+		if err != nil {
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, deploymentID).Registerf(
+				"Job %s unexpected status %s for replication request %s", actionData.nodeName, ddiStatus, requestID)
+			return true, err
+		}
+
+		if newStatus != requestStatus {
+			changeOccured = true
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).Registerf(
+				"Job %s replication request %s status changed from %s to %s", actionData.nodeName, requestID, requestStatus, newStatus)
+			requestIDStatus[requestID] = newStatus
+		}
+
+		if newStatus == requestStatusFailed {
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, deploymentID).Registerf(
+				"Job %s replication request %s status changed to %s, error %s", actionData.nodeName, requestID, newStatus, errorMessage)
+
+		} else if newStatus != requestStatusCompleted {
+			requestIDsInProgress = append(requestIDsInProgress, requestID)
+		} else {
+			oneReplicationSuccess = true
+		}
+	}
+
+	if changeOccured {
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, deploymentID).Registerf(
+			"Job %s replication requests statuses: %v", actionData.nodeName, requestIDStatus)
+		err = deployments.SetAttributeComplexForAllInstances(ctx, deploymentID, actionData.nodeName,
+			requestIDStatusConsulAttribute, requestIDStatus)
+		if err != nil {
+			events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, deploymentID).Registerf(
+				"Job %s failed to store the request ID - status map %v, error: %s", actionData.nodeName, requestIDStatus, err.Error())
+		}
+	}
+
+	previousRequestStatus, err := deployments.GetInstanceStateString(ctx, deploymentID, actionData.nodeName, "0")
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to get instance state for deployment %s node %s", deploymentID, actionData.nodeName)
+	}
+	jobDone := (len(requestIDsInProgress) == 0)
+	var newRequestStatus string
+	if !jobDone {
+		newRequestStatus = requestStatusRunning
+	} else {
+		if oneReplicationSuccess {
+			newRequestStatus = requestStatusCompleted
+		} else {
+			newRequestStatus = requestStatusFailed
+			err = errors.Errorf("Job %s had no dataset replication successfull for requests : %v", actionData.nodeName, requestIDStatus)
+		}
+	}
+
+	if previousRequestStatus != newRequestStatus {
+
+		err := deployments.SetInstanceStateStringWithContextualLogs(ctx, deploymentID, actionData.nodeName, "0", newRequestStatus)
+		if err != nil {
+			log.Printf("Failed to set instance %s %s state %s: %s", deploymentID, actionData.nodeName, newRequestStatus, err.Error())
+		}
+	}
+
+	return jobDone, err
+}
+
 func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Configuration, deploymentID string, action *prov.Action) (bool, error) {
 	var (
 		deregister bool
@@ -685,7 +813,7 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 	var toBeStoredFiles map[string]ToBeStoredFileInfo
 	val, err = deployments.GetInstanceAttributeValue(ctx, deploymentID, actionData.nodeName, "0", toBeStoredFilesConsulAttribute)
 	if err != nil {
-		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns %+v\n", deploymentID, actionData, err)
+		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns %+v\n", deploymentID, actionData.nodeName, err)
 	}
 	if err == nil && val != nil && val.RawString() != "" {
 		err = json.Unmarshal([]byte(val.RawString()), &toBeStoredFiles)
@@ -694,7 +822,7 @@ func (o *ActionOperator) monitorRunningHPCJob(ctx context.Context, cfg config.Co
 			return true, err
 		}
 	} else {
-		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns no value\n", deploymentID, actionData)
+		log.Debugf("deployments.GetInstanceAttributeValue %s %s returns no value\n", deploymentID, actionData.nodeName)
 	}
 
 	log.Debugf("consul for %s has toBeStoredFiles %+v\n", actionData.nodeName, toBeStoredFiles)
