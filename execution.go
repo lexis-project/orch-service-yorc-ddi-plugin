@@ -666,6 +666,5 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
-	return exec, errors.Errorf("operation %q supported only for nodes derived from %q",
-		operation, ddiToCloudJobType)
+	return exec, errors.Errorf("operation %q not supported", operation)
 }

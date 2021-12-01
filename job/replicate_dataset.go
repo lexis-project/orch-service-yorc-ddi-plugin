@@ -85,6 +85,29 @@ func (r *ReplicateDatasetExecution) Execute(ctx context.Context) error {
 
 func (r *ReplicateDatasetExecution) submitReplicationRequest(ctx context.Context) error {
 
+	requestIDStatus := make(map[string]string)
+
+	// Store a dummy request id needed by common code managing jobs
+	_ = deployments.SetAttributeForAllInstances(ctx, r.DeploymentID, r.NodeName,
+		requestIDConsulAttribute, "replicationRequest")
+
+	// Get list of requested sites where the dataset should be available
+	requestedSitesStr := r.GetValueFromEnvInputs(replicationSitesEnvVar)
+	var requestedSites []string
+	if requestedSitesStr != "" {
+		err := json.Unmarshal([]byte(requestedSitesStr), &requestedSites)
+		if err != nil {
+			return errors.Wrapf(err, "Wrong format for files patterns %s for node %s", requestedSitesStr, r.NodeName)
+		}
+	}
+
+	if len(requestedSites) == 0 {
+		// No replication to perform
+		err := deployments.SetAttributeComplexForAllInstances(ctx, r.DeploymentID, r.NodeName,
+			requestIDStatusConsulAttribute, requestIDStatus)
+		return err
+	}
+
 	ddiClient, err := getDDIClient(ctx, r.Cfg, r.DeploymentID, r.NodeName)
 	if err != nil {
 		return err
@@ -117,14 +140,14 @@ func (r *ReplicateDatasetExecution) submitReplicationRequest(ctx context.Context
 		return err
 	}
 
-	// Get list of files patterns to take into account if any
-	requestedSitesStr := r.GetValueFromEnvInputs(replicationSitesEnvVar)
-	var requestedSites []string
-	if requestedSitesStr != "" {
-		err := json.Unmarshal([]byte(requestedSitesStr), &requestedSites)
-		if err != nil {
-			return errors.Wrapf(err, "Wrong format for files patterns %s for node %s", requestedSitesStr, r.NodeName)
-		}
+	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, r.DeploymentID).Registerf(
+		"Dataset %s is available at: %v", datasetPath, ddiAreaNames)
+
+	if len(ddiAreaNames) == 0 {
+		events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelERROR, r.DeploymentID).Registerf(
+			"Failed to find a DDI location where dataset %s is available", datasetPath)
+		err = errors.Errorf("Found no DDI location for dataset %s", datasetPath)
+		return err
 	}
 
 	var missingSites []string
@@ -144,7 +167,6 @@ func (r *ReplicateDatasetExecution) submitReplicationRequest(ctx context.Context
 	events.WithContextOptionalFields(ctx).NewLogEntry(events.LogLevelINFO, r.DeploymentID).Registerf(
 		"Sites where %s must do the replication: %v", r.NodeName, missingSites)
 
-	var requestIDStatus map[string]string
 	if len(missingSites) == 0 {
 		// No replication request, nothing to submit
 		err = deployments.SetAttributeComplexForAllInstances(ctx, r.DeploymentID, r.NodeName,
@@ -152,8 +174,7 @@ func (r *ReplicateDatasetExecution) submitReplicationRequest(ctx context.Context
 		return err
 	}
 
-	var allDDIAreaNames []string
-	allDDIAreaNames, err = r.getDDIAreaNames(ctx)
+	allDDIAreaNames, err := r.getDDIAreaNames(ctx)
 	if err != nil {
 		return err
 	}
