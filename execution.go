@@ -34,29 +34,34 @@ import (
 )
 
 const (
-	locationJobMonitoringTimeInterval       = "job_monitoring_time_interval"
-	locationDefaultMonitoringTimeInterval   = 5 * time.Second
-	ddiAccessComponentType                  = "org.lexis.common.ddi.nodes.DDIAccess"
-	computeInstanceDatasetInfoComponentType = "org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo"
-	hpcJobTaskDatasetInfoComponentType      = "org.lexis.common.ddi.nodes.GetHPCJobTaskDatasetInfo"
-	enableCloudStagingAreaJobType           = "org.lexis.common.ddi.nodes.EnableCloudStagingAreaAccessJob"
-	disableCloudStagingAreaJobType          = "org.lexis.common.ddi.nodes.DisableCloudStagingAreaAccessJob"
-	ddiToCloudJobType                       = "org.lexis.common.ddi.nodes.DDIToCloudJob"
-	ddiToHPCTaskJobType                     = "org.lexis.common.ddi.nodes.DDIToHPCTaskJob"
-	ddiRuntimeToHPCTaskJobType              = "org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob"
-	hpcToDDIJobType                         = "org.lexis.common.ddi.nodes.HPCToDDIJob"
-	ddiRuntimeFilesToCloudJobType           = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob"
-	ddiRuntimeFilesToHPCTaskJobType         = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob"
-	cloudToDDIJobType                       = "org.lexis.common.ddi.nodes.CloudToDDIJob"
-	cloudToHPCJobType                       = "org.lexis.common.ddi.nodes.CloudToHPCJob"
-	hpcToCloudJobType                       = "org.lexis.common.ddi.nodes.HPCToCloudJob"
-	waitForDDIDatasetJobType                = "org.lexis.common.ddi.nodes.WaitForDDIDatasetJob"
-	storeRunningHPCJobType                  = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob"
-	storeRunningHPCJobGroupByDatasetType    = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIGroupByDatasetJob"
-	deleteCloudDataJobType                  = "org.lexis.common.ddi.nodes.DeleteCloudDataJob"
-	getDDIDatasetInfoJobType                = "org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob"
-	GetDDIRuntimeDatasetInfoJobType         = "org.lexis.common.ddi.nodes.GetDDIRuntimeDatasetInfoJob"
-	sshfsMountStagingAreaDataset            = "org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset"
+	locationJobMonitoringTimeInterval          = "job_monitoring_time_interval"
+	locationDefaultMonitoringTimeInterval      = 5 * time.Second
+	locationJobLongMonitoringTimeInterval      = "job_long_monitoring_time_interval"
+	locationDefaultLongMonitoringTimeInterval  = 3 * time.Minute
+	locationJobShortMonitoringTimeInterval     = "job_short_monitoring_time_interval"
+	locationDefaultShortMonitoringTimeInterval = 10 * time.Second
+	ddiAccessComponentType                     = "org.lexis.common.ddi.nodes.DDIAccess"
+	computeInstanceDatasetInfoComponentType    = "org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo"
+	hpcJobTaskDatasetInfoComponentType         = "org.lexis.common.ddi.nodes.GetHPCJobTaskDatasetInfo"
+	enableCloudStagingAreaJobType              = "org.lexis.common.ddi.nodes.EnableCloudStagingAreaAccessJob"
+	disableCloudStagingAreaJobType             = "org.lexis.common.ddi.nodes.DisableCloudStagingAreaAccessJob"
+	ddiToCloudJobType                          = "org.lexis.common.ddi.nodes.DDIToCloudJob"
+	ddiToHPCTaskJobType                        = "org.lexis.common.ddi.nodes.DDIToHPCTaskJob"
+	ddiRuntimeToHPCTaskJobType                 = "org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob"
+	hpcToDDIJobType                            = "org.lexis.common.ddi.nodes.HPCToDDIJob"
+	ddiRuntimeFilesToCloudJobType              = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob"
+	ddiRuntimeFilesToHPCTaskJobType            = "org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob"
+	cloudToDDIJobType                          = "org.lexis.common.ddi.nodes.CloudToDDIJob"
+	cloudToHPCJobType                          = "org.lexis.common.ddi.nodes.CloudToHPCJob"
+	hpcToCloudJobType                          = "org.lexis.common.ddi.nodes.HPCToCloudJob"
+	waitForDDIDatasetJobType                   = "org.lexis.common.ddi.nodes.WaitForDDIDatasetJob"
+	storeRunningHPCJobType                     = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob"
+	storeRunningHPCJobGroupByDatasetType       = "org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIGroupByDatasetJob"
+	deleteCloudDataJobType                     = "org.lexis.common.ddi.nodes.DeleteCloudDataJob"
+	getDDIDatasetInfoJobType                   = "org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob"
+	GetDDIRuntimeDatasetInfoJobType            = "org.lexis.common.ddi.nodes.GetDDIRuntimeDatasetInfoJob"
+	replicateDatasetJobType                    = "org.lexis.common.ddi.nodes.ReplicateDatasetJob"
+	sshfsMountStagingAreaDataset               = "org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset"
 )
 
 // Execution is the interface holding functions to execute an operation
@@ -93,11 +98,19 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		monitoringTimeInterval = locationDefaultMonitoringTimeInterval
 	}
 
-	// Defining a long monitoring internal for very long jobs, that will override
+	// Defining a long monitoring internal for very long jobs
+	longMonitoringTimeInterval := locationProps.GetDuration(locationJobLongMonitoringTimeInterval)
+	if longMonitoringTimeInterval <= 0 {
+		// Default value
+		longMonitoringTimeInterval = locationDefaultLongMonitoringTimeInterval
+	}
+
+	// Defining a short monitoring internal for jobs required to react quickly, that will override
 	// the monitoring time interval
-	longMonitoringTimeInterval := time.Minute * 10
-	if longMonitoringTimeInterval < monitoringTimeInterval {
-		longMonitoringTimeInterval = monitoringTimeInterval
+	shortMonitoringTimeInterval := locationProps.GetDuration(locationJobShortMonitoringTimeInterval)
+	if shortMonitoringTimeInterval <= 0 {
+		// Default value
+		shortMonitoringTimeInterval = locationDefaultShortMonitoringTimeInterval
 	}
 
 	// Getting an AAI client to manage tokens
@@ -225,6 +238,13 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 
 	// Getting user info
 	userInfo, err := aaiClient.GetUserInfo(ctx, accessToken)
+	if err != nil {
+		accessToken, _, err = aaiClient.RefreshToken(ctx)
+		if err != nil {
+			return exec, errors.Wrapf(err, "Failed to refresh token for orchestrator")
+		}
+		userInfo, err = aaiClient.GetUserInfo(ctx, accessToken)
+	}
 	if err != nil {
 		return exec, errors.Wrapf(err, "Failed to get user info from access token for node %s", nodeName)
 	}
@@ -497,7 +517,7 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 				Operation:    operation,
 				AAIClient:    aaiClient,
 			},
-			MonitoringTimeInterval: monitoringTimeInterval,
+			MonitoringTimeInterval: shortMonitoringTimeInterval,
 		}
 
 		return exec, exec.ResolveExecution(ctx)
@@ -596,6 +616,29 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
+	isReplicateDatasetJob, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, replicateDatasetJobType)
+	if err != nil {
+		return exec, err
+	}
+	if isReplicateDatasetJob {
+		exec = &job.ReplicateDatasetExecution{
+			DDIJobExecution: &job.DDIJobExecution{
+				DDIExecution: &common.DDIExecution{
+					KV:           kv,
+					Cfg:          cfg,
+					DeploymentID: deploymentID,
+					TaskID:       taskID,
+					NodeName:     nodeName,
+					Operation:    operation,
+					AAIClient:    aaiClient,
+				},
+				ActionType:             job.ReplicateDatasetAction,
+				MonitoringTimeInterval: monitoringTimeInterval,
+			},
+		}
+		return exec, exec.ResolveExecution(ctx)
+	}
+
 	isSshfsMountStagingAreaDataset, err := deployments.IsNodeDerivedFrom(ctx, deploymentID, nodeName, sshfsMountStagingAreaDataset)
 	if err != nil {
 		return exec, err
@@ -623,6 +666,5 @@ func newExecution(ctx context.Context, cfg config.Configuration, taskID, deploym
 		return exec, exec.ResolveExecution(ctx)
 	}
 
-	return exec, errors.Errorf("operation %q supported only for nodes derived from %q",
-		operation, ddiToCloudJobType)
+	return exec, errors.Errorf("operation %q not supported", operation)
 }

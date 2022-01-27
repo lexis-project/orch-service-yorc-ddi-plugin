@@ -17,6 +17,7 @@ package common
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path"
 	"regexp"
 	"strconv"
@@ -68,8 +69,20 @@ const (
 	jobStartDateEnvVar                       = "JOB_START_DATE"
 	neededFilesPatternsEnvVar                = "NEEDED_FILES_PATTERNS"
 
-	osCapability        = "tosca.capabilities.OperatingSystem"
-	heappeJobCapability = "org.lexis.common.heappe.capabilities.HeappeJob"
+	tasksNameIdEnvVar     = "TASKS_NAME_ID"
+	tasksNameStatusEnvVar = "TASKS_NAME_STATUS"
+	isExtraLongEnvVar     = "IS_EXTRA_LONG"
+	taskNameEnvVar        = "TASK_NAME"
+	taskStatusCreated     = "CREATED"
+	taskStatusCompleted   = "COMPLETED"
+	taskStatusFailed      = "FAILED"
+	taskStatusCanceled    = "CANCELED"
+	taskStatusPending     = "PENDING"
+	taskStatusRunning     = "RUNNING"
+
+	osCapability          = "tosca.capabilities.OperatingSystem"
+	heappeJobCapability   = "org.lexis.common.heappe.capabilities.HeappeJob"
+	transferDDICapability = "org.lexis.common.ddi.capabilities.DataTransferDDI"
 )
 
 // ChangedFile holds properties of a file created/updated by a job
@@ -190,6 +203,12 @@ func (e *DDIExecution) SetLocationFromAssociatedHPCJob(ctx context.Context) (str
 	return e.setLocationFromAssociatedTarget(ctx, heappeJobCapability)
 }
 
+// SetLocationFromAssociatedTransferJob sets the location of this component
+// according to an associated data transfer to DDI job location
+func (e *DDIExecution) SetLocationFromAssociatedDataTransferJob(ctx context.Context) (string, error) {
+	return e.setLocationFromAssociatedTarget(ctx, transferDDICapability)
+}
+
 // GetHPCJobChangedFilesSinceStartup gets from evironment the list of files modified by a job since
 // its startup
 func (e *DDIExecution) GetHPCJobChangedFilesSinceStartup(ctx context.Context) ([]ChangedFile, error) {
@@ -297,7 +316,7 @@ func (e *DDIExecution) setLocationFromAssociatedTarget(ctx context.Context, targ
 		log.Debugf("target node %s metadata : %+v\n", targetNodeName, targetNodeTemplate.Metadata)
 		targetLocationName = targetNodeTemplate.Metadata[tosca.MetadataLocationNameKey]
 	}
-	if targetLocationName == "" {
+	if targetLocationName == "" || targetLocationName == "SKIPPED" {
 		return locationName, err
 	}
 
@@ -563,6 +582,123 @@ func (e *DDIExecution) GetDDILocationFromComputeLocation(ctx context.Context,
 		e.DeploymentID, e.NodeName, DDIInfrastructureType)
 	return locationProps, err
 
+}
+
+// GetFirstCreatedTaskDetails gets details on the first task of state created or pending in a HEAppE job: task ID and directory path
+func (e *DDIExecution) GetFirstCreatedTaskDetails(ctx context.Context, jobPath string) (int64, string, error) {
+	return e.getTaskDetails(ctx, jobPath, []string{taskStatusCreated, taskStatusPending}, false)
+}
+
+// GetFirstRunningTaskDetails gets details on the first task pending or running in a HEAppE job: task ID and directory path
+func (e *DDIExecution) GetFirstRunningTaskDetails(ctx context.Context, jobPath string) (int64, string, error) {
+	return e.getTaskDetails(ctx, jobPath, []string{taskStatusRunning}, false)
+}
+
+// GetLastDoneTaskDetails gets details on the last task done in a HEAppE job: task ID and directory path
+func (e *DDIExecution) GetLastDoneTaskDetails(ctx context.Context, jobPath string) (int64, string, error) {
+	return e.getTaskDetails(ctx, jobPath, []string{taskStatusCompleted, taskStatusFailed, taskStatusCanceled}, true)
+}
+
+func (e *DDIExecution) getTaskDetails(ctx context.Context, jobPath string, expectedStatuses []string, needLast bool) (int64, string, error) {
+	taskName := e.GetValueFromEnvInputs(taskNameEnvVar)
+
+	strVal := e.GetValueFromEnvInputs(tasksNameIdEnvVar)
+	if strVal == "" {
+		return 0, "", errors.Errorf("Failed to get map of tasks name-id from associated job")
+	}
+	var tasksNameID map[string]string
+	err := json.Unmarshal([]byte(strVal), &tasksNameID)
+	if err != nil {
+		return 0, "", errors.Wrapf(err, "Failed to unmarshall map od task name - task id %s", strVal)
+	}
+
+	strVal = e.GetValueFromEnvInputs(tasksNameStatusEnvVar)
+	if strVal == "" {
+		return 0, "", errors.Errorf("Failed to get map of tasks name-status from associated job")
+	}
+	var tasksNameStatus map[string]string
+	err = json.Unmarshal([]byte(strVal), &tasksNameStatus)
+	if err != nil {
+		return 0, "", errors.Wrapf(err, "Failed to unmarshall map od task name - task status %s", strVal)
+	}
+
+	isLongDuration := e.GetBooleanValueFromEnvInputs(isExtraLongEnvVar)
+	taskIDStr, err := getTaskIDString(taskName, expectedStatuses, needLast, isLongDuration, tasksNameID, tasksNameStatus)
+	if err != nil {
+		return 0, "", errors.Wrapf(err, "Failed to unmarshall map od task name - task status %s", strVal)
+	}
+	taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
+	if err != nil {
+		err = errors.Wrapf(err, "Unexpected task ID value %q for deployment %s node %s",
+			taskIDStr, e.DeploymentID, e.NodeName)
+		return taskID, "", err
+	}
+	taskDirPath := path.Join(jobPath, taskIDStr)
+	return taskID, taskDirPath, err
+}
+
+func getTaskIDString(taskName string, expectedStatuses []string, needLast bool, isLongDuration bool, tasksNameID map[string]string, tasksNameStatus map[string]string) (string, error) {
+	var taskIDStr string
+	var err error
+	if taskName == "" {
+
+		// No task name specified, returns the first or last (depending on needLast)
+		// having the expected status
+		for tName, tID := range tasksNameID {
+			if len(expectedStatuses) == 0 || hasStatus(tasksNameStatus[tName], expectedStatuses) {
+				taskIDStr = tID
+				if !needLast {
+					break
+				}
+			}
+		}
+		if taskIDStr == "" {
+			err = errors.Errorf("Found no task in HEAppE job matching statuses %v", expectedStatuses)
+		}
+		return taskIDStr, err
+	}
+
+	if !isLongDuration {
+		// There is only one task name with the name passed in argument
+		taskIDStr = tasksNameID[taskName]
+		if taskIDStr == "" {
+			err = errors.Errorf("Found no task %s in HEAppE job", taskName)
+		}
+		return taskIDStr, err
+	}
+
+	// For long duration jobs, the task is suffixed by _part_<i>
+	i := 0
+	for i < 1000 {
+		i = i + 1
+		tName := fmt.Sprintf("%s_part_%d", taskName, i)
+		tStatus, found := tasksNameStatus[tName]
+		if !found {
+			// End of iteration on tasks parts
+			break
+		}
+		if len(expectedStatuses) == 0 || hasStatus(tStatus, expectedStatuses) {
+			taskIDStr = tasksNameID[tName]
+			if !needLast {
+				break
+			}
+		}
+	}
+	if taskIDStr == "" {
+		err = errors.Errorf("Found no long duration task with prefix %s statuses %v in HEAppE job", taskName, expectedStatuses)
+	}
+	return taskIDStr, err
+}
+
+func hasStatus(currentStatus string, expectedStatuses []string) bool {
+	found := false
+	for _, status := range expectedStatuses {
+		found = (currentStatus == status)
+		if found {
+			break
+		}
+	}
+	return found
 }
 
 // GetAccessToken returns the access token for this deployment

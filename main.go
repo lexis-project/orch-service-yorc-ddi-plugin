@@ -64,6 +64,7 @@ func main() {
 		job.DisableCloudAccessAction,
 		job.DataTransferAction,
 		job.CloudDataDeleteAction,
+		job.ReplicateDatasetAction,
 		job.GetDDIDatasetInfoAction,
 		job.WaitForDatasetAction,
 		job.StoreRunningHPCJobFilesToDDIAction,

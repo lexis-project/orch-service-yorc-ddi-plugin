@@ -85,6 +85,7 @@ type DatasetLocation struct {
 	InternalID string `json:"internalID"`
 	Access     string `json:"access"`
 	Project    string `json:"project"`
+	Zone       string `json:"zone,omitempty"`
 }
 
 // DatasetSearchResult holds properties of an element of a dataset search result
@@ -112,6 +113,7 @@ type DatasetListingRequest struct {
 	InternalID string `json:"internalID"`
 	Access     string `json:"access"`
 	Project    string `json:"project"`
+	Zone       string `json:"zone"`
 	Recursive  bool   `json:"recursive"`
 }
 

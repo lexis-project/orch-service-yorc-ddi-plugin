@@ -90,7 +90,7 @@ type RefreshTokenFunc func() (newAccessToken string, err error)
 type Client interface {
 	CreateEmptyDatasetInProject(token, project string, metadata Metadata) (string, error)
 	IsAlive() bool
-	ListDataSet(token, datasetID, access, project string, recursive bool) (DatasetListing, error)
+	ListDataSet(token, datasetID, access, project, zone string, recursive bool) (DatasetListing, error)
 	GetDisableCloudAccessRequestStatus(token, requestID string) (string, error)
 	GetEnableCloudAccessRequestStatus(token, requestID string) (string, error)
 	SubmitCloudStagingAreaDataDeletion(token, path string) (string, error)
@@ -676,7 +676,7 @@ func (d *ddiClient) CreateEmptyDatasetInProject(token, project string, metadata 
 }
 
 // ListDataSet lists the content of a dataset
-func (d *ddiClient) ListDataSet(token, datasetID, access, project string, recursive bool) (DatasetListing, error) {
+func (d *ddiClient) ListDataSet(token, datasetID, access, project, zone string, recursive bool) (DatasetListing, error) {
 
 	var response DatasetListing
 
@@ -684,6 +684,7 @@ func (d *ddiClient) ListDataSet(token, datasetID, access, project string, recurs
 		InternalID: datasetID,
 		Access:     access,
 		Project:    project,
+		Zone:       zone,
 		Recursive:  recursive,
 	}
 	err := d.httpDatasetClient.doRequest(http.MethodPost, ddiDatasetListingREST,

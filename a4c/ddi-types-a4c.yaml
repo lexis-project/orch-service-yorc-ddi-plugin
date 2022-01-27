@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.ddi-types
-  template_version: 1.0.1
+  template_version: 1.0.3
   template_author: yorc
 
 description: DDI types - Distributed Data Infrastructure
@@ -10,7 +10,7 @@ description: DDI types - Distributed Data Infrastructure
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.heappe-types:1.0.8
 
 artifact_types:
   org.lexis.common.ddi.artifacts.Deployment:
@@ -494,6 +494,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
           implementation:
             file: ddi-types-a4c.yaml
@@ -540,6 +542,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
           implementation:
             file: ddi-types-a4c.yaml
@@ -620,6 +624,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
             SOURCE_SUBDIRECTORY:  { get_property: [SELF, source_subdirectory] }
             DDI_PATH: { get_property: [SELF, ddi_path] }
@@ -697,6 +703,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
           implementation:
             file: ddi-types-a4c.yaml
@@ -781,6 +789,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
             SOURCE_SUBDIRECTORY:  { get_property: [SELF, source_subdirectory] }
             CLOUD_STAGING_AREA_DIRECTORY_PATH: { get_property: [SELF, cloud_staging_area_directory_path] }
@@ -894,6 +904,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             JOB_CHANGED_FILES: {get_attribute: [REQ_TARGET, job, changed_files]}
             JOB_NODE_NAME: {get_attribute: [REQ_TARGET, job, tosca_name]}
             JOB_START_DATE: {get_attribute: [REQ_TARGET, job, start_date]}
@@ -1146,6 +1158,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             FILE_PATTERN: { get_property: [SELF, file_pattern] }
             TASK_NAME: {get_property: [SELF, task_name]}
           implementation:
@@ -1298,6 +1312,8 @@ node_types:
             HEAPPE_JOB_ID: {get_attribute: [REQ_TARGET, job, job_id]}
             HEAPPE_URL: {get_attribute: [REQ_TARGET, job, heappe_url]}
             TASKS_NAME_ID: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            TASKS_NAME_STATUS: {get_attribute: [REQ_TARGET, job, tasks_name_status]}
+            IS_EXTRA_LONG: {get_property: [REQ_TARGET, job, JobSpecification, IsExtraLong]}
             TASK_NAME: {get_property: [SELF, task_name]}
             NEEDED_FILES_PATTERNS: { get_property: [SELF, needed_files_patterns] }
           implementation:
@@ -1383,6 +1399,58 @@ node_types:
           implementation: playbooks/sshfs_unmount_unexport.yaml
       custom:
         refresh_token:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+  org.lexis.common.ddi.nodes.ReplicateDatasetJob:
+    derived_from: tosca.nodes.Root
+    description: >
+      Replicates a dataset to different sites
+    properties:
+      token:
+        description: OpenID Connect token
+        type: string
+        required: true
+      replication_sites:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of sites on which the dataset should be available
+        required: false
+    attributes:
+      requestid_status:
+        type: map
+        description: |
+          Map of requestIDs providing the status of each replication request
+    requirements:
+      - dataset_provider:
+          capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+          node: tosca.nodes.Root
+          relationship: tosca.relationships.DependsOn
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+        create:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+        delete:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+      tosca.interfaces.node.lifecycle.Runnable:
+        inputs:
+          TOKEN: { get_property: [SELF, token] }
+          DDI_DATASET_PATH: { get_attribute: [REQ_TARGET, dataset_provider, destination_path] }
+          REPLICATION_SITES: { get_property: [SELF, replication_sites] }
+        submit:
+          implementation:
+            file: ddi-types-a4c.yaml
+            type: yorc.artifacts.Deployment.SlurmJob
+        run:
           implementation:
             file: ddi-types-a4c.yaml
             type: yorc.artifacts.Deployment.SlurmJob
