@@ -3,6 +3,9 @@
 The Yorc DDI plugin implements a Yorc ([Ystia orchestrator](https://github.com/ystia/yorc/)) plugin as described in [Yorc documentation](https://yorc.readthedocs.io/en/latest/plugins.html), allowing the orchestrator to use 
 [LEXIS DDI (Distributed Data Infrastructure)](https://lexis-project.eu/web/lexis-platform/data-management-layer/) API to manage asynchronous data transfers requests.
 
+## Acknowledgement
+This code repository is a result / contains results of the LEXIS project. The project has received funding from the European Union’s Horizon 2020 Research and Innovation programme (2014-2020) under grant agreement No. 825532.
+
 ## TOSCA components
 
 This plugin provides the following TOSCA components defined in the TOSCA file [a4c/ddi-types-a4c.yaml](a4c/ddi-types-a4c.yaml)
