@@ -1,5 +1,7 @@
 # Yorc DDI plugin
 
+<a href="https://doi.org/10.5281/zenodo.6080482"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.6080482.svg" alt="DOI"></a>
+
 The Yorc DDI plugin implements a Yorc ([Ystia orchestrator](https://github.com/ystia/yorc/)) plugin as described in [Yorc documentation](https://yorc.readthedocs.io/en/latest/plugins.html), allowing the orchestrator to use 
 [LEXIS DDI (Distributed Data Infrastructure)](https://lexis-project.eu/web/lexis-platform/data-management-layer/) API to manage asynchronous data transfers requests.
 
